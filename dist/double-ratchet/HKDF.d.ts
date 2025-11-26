@@ -1,0 +1,42 @@
+/**
+ * HKDF (HMAC-based Key Derivation Function) Implementierung
+ * Basierend auf RFC 5869 für sichere Schlüsselableitung
+ * Verwendet SHA-256 als Standard-Hash-Algorithmus
+ */
+export declare class HKDF {
+    private hash;
+    /**
+     * Erstellt eine neue HKDF-Instanz
+     * @param hash - Der zu verwendende Hash-Algorithmus (Standard: SHA-256)
+     */
+    constructor(hash?: string);
+    /**
+     * Leitet Schlüsselmaterial mit HKDF ab
+     * @param salt - Salt-Wert für die Extraktion (sollte zufällig sein)
+     * @param inputKeyMaterial - Das Eingabeschlüsselmaterial
+     * @param length - Die gewünschte Länge des abgeleiteten Schlüssels in Bytes
+     * @returns Das abgeleitete Schlüsselmaterial
+     */
+    deriveKeys(salt: Uint8Array, inputKeyMaterial: Uint8Array, length: number): Promise<Uint8Array>;
+    /**
+     * HKDF-Extract: Extrahiert einen Pseudozufallsschlüssel aus dem Eingabematerial
+     * @param salt - Salt-Wert für HMAC
+     * @param ikm - Input Key Material
+     * @returns Pseudozufallsschlüssel (PRK)
+     */
+    private extract;
+    /**
+     * HKDF-Expand: Erweitert den PRK auf die gewünschte Länge
+     * @param prk - Pseudozufallsschlüssel aus Extract
+     * @param length - Gewünschte Ausgabelänge in Bytes
+     * @returns Das erweiterte Schlüsselmaterial (OKM)
+     */
+    private expand;
+    /**
+     * Konkateniert zwei Uint8Arrays
+     * @param a - Erstes Array
+     * @param b - Zweites Array
+     * @returns Konkateniertes Array
+     */
+    private concatUint8Arrays;
+}

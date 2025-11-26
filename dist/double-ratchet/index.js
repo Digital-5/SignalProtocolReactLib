@@ -1,7 +1,7 @@
 "use strict";
 /**
- * Signal Protocol React Library
- * Eine TypeScript-Implementierung des Signal Protocol für sichere End-to-End-Verschlüsselung
+ * Double Ratchet Module
+ * Exportiert alle Double Ratchet Komponenten
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -18,9 +18,11 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-// Double Ratchet Module
-__exportStar(require("./double-ratchet"), exports);
-// PQXDH Module (Post-Quantum Extended Diffie-Hellman)
-__exportStar(require("./pqxdh"), exports);
-// Mathematische Hilfsfunktionen (falls vorhanden)
-__exportStar(require("./math"), exports);
+// Kryptografische Hilfsfunktionen
+__exportStar(require("./CryptoUtils"), exports);
+// HKDF (Schlüsselableitung)
+__exportStar(require("./HKDF"), exports);
+// Double Ratchet State und Initialisierung
+__exportStar(require("./DR_State"), exports);
+__exportStar(require("./DR_Init"), exports);
+__exportStar(require("./DR_Ratchet"), exports);

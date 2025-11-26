@@ -1,97 +1,210 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# Signal Protocol React Library
 
-# Getting Started
+Eine TypeScript-Implementierung des Signal Protocol für sichere End-to-End-Verschlüsselung in React und React Native Anwendungen.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## 📋 Inhaltsverzeichnis
 
-## Step 1: Start Metro
+- [Features](#features)
+- [Installation](#installation)
+- [Verwendung](#verwendung)
+- [API-Dokumentation](#api-dokumentation)
+- [Sicherheitshinweise](#sicherheitshinweise)
+- [Entwicklung](#entwicklung)
+- [Lizenz](#lizenz)
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## ✨ Features
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+- **Double Ratchet Algorithmus**: Implementierung des Double Ratchet Algorithmus nach dem Signal Protocol
+- **ECDH Schlüsselaustausch**: Elliptic Curve Diffie-Hellman mit P-256 Kurve
+- **HKDF Schlüsselableitung**: HMAC-based Key Derivation Function nach RFC 5869
+- **TypeScript**: Vollständig typisiert für bessere IDE-Unterstützung
+- **WebCrypto API**: Nutzt native Browser-Kryptographie für optimale Performance
 
-```sh
-# Using npm
-npm start
+## 📦 Installation
 
-# OR using Yarn
-yarn start
+```bash
+npm install signal-protocol-react-lib
 ```
 
-## Step 2: Build and run your app
+oder mit yarn:
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+```bash
+yarn add signal-protocol-react-lib
 ```
 
-### iOS
+## 🚀 Verwendung
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+### Grundlegende Verwendung
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+```typescript
+import { generateKeyPair, deriveSharedSecret, HKDF, DR_Init } from 'signal-protocol-react-lib';
 
-```sh
-bundle install
+// 1. Generiere Schlüsselpaare
+const ourIdentityKeyPair = await generateKeyPair();
+const ourEphemeralKeyPair = await generateKeyPair();
+
+// 2. Empfange öffentliche Schlüssel der Gegenseite
+const theirIdentityPublicKey = /* ... */;
+const theirEphemeralPublicKey = /* ... */;
+
+// 3. Initialisiere den Root Key (z.B. aus einem X3DH Handshake)
+const rootKey = new Uint8Array(32); // 32 zufällige Bytes
+
+// 4. Initialisiere den Double Ratchet State
+const drState = await DR_Init({
+  rootKey,
+  ourIdentityKeyPair,
+  theirIdentityPublicKey,
+  ourEphemeralKeyPair,
+  theirEphemeralPublicKey
+});
+
+console.log('Double Ratchet State initialisiert:', drState);
 ```
 
-Then, and every time you update your native dependencies, run:
+### ECDH Schlüsselaustausch
 
-```sh
-bundle exec pod install
+```typescript
+import { generateKeyPair, deriveSharedSecret } from 'signal-protocol-react-lib';
+
+// Generiere zwei Schlüsselpaare
+const aliceKeyPair = await generateKeyPair();
+const bobKeyPair = await generateKeyPair();
+
+// Beide Seiten können dasselbe gemeinsame Geheimnis ableiten
+const aliceSharedSecret = await deriveSharedSecret(
+  aliceKeyPair.privateKey,
+  bobKeyPair.publicKey
+);
+
+const bobSharedSecret = await deriveSharedSecret(
+  bobKeyPair.privateKey,
+  aliceKeyPair.publicKey
+);
+
+// aliceSharedSecret === bobSharedSecret
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+### HKDF Schlüsselableitung
 
-```sh
-# Using npm
-npm run ios
+```typescript
+import { HKDF } from 'signal-protocol-react-lib';
 
-# OR using Yarn
-yarn ios
+const hkdf = new HKDF('SHA-256');
+
+// Leite Schlüsselmaterial ab
+const salt = new Uint8Array(32); // Zufälliger Salt
+const inputKeyMaterial = new Uint8Array(32); // Eingabeschlüssel
+const derivedKeys = await hkdf.deriveKeys(salt, inputKeyMaterial, 64);
+
+// Teile die abgeleiteten Schlüssel auf
+const key1 = derivedKeys.slice(0, 32);
+const key2 = derivedKeys.slice(32, 64);
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## 📚 API-Dokumentation
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+### `generateKeyPair(): Promise<KeyPair>`
 
-## Step 3: Modify your app
+Generiert ein neues ECDH-Schlüsselpaar (P-256).
 
-Now that you have successfully run the app, let's make changes!
+**Rückgabe:**
+- `Promise<KeyPair>`: Ein Objekt mit `publicKey` und `privateKey` als `Uint8Array`
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+### `deriveSharedSecret(privateKeyBytes: Uint8Array, publicKeyBytes: Uint8Array): Promise<Uint8Array>`
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+Leitet ein gemeinsames Geheimnis mittels ECDH ab.
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+**Parameter:**
+- `privateKeyBytes`: Unser privater Schlüssel (PKCS#8 Format)
+- `publicKeyBytes`: Öffentlicher Schlüssel der Gegenseite (Raw Format)
 
-## Congratulations! :tada:
+**Rückgabe:**
+- `Promise<Uint8Array>`: Das abgeleitete gemeinsame Geheimnis (32 Bytes)
 
-You've successfully run and modified your React Native App. :partying_face:
+### `HKDF`
 
-### Now what?
+Klasse für HMAC-based Key Derivation Function.
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+#### `constructor(hash?: string)`
 
-# Troubleshooting
+Erstellt eine neue HKDF-Instanz.
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+**Parameter:**
+- `hash` (optional): Der zu verwendende Hash-Algorithmus (Standard: `'SHA-256'`)
 
-# Learn More
+#### `deriveKeys(salt: Uint8Array, inputKeyMaterial: Uint8Array, length: number): Promise<Uint8Array>`
 
-To learn more about React Native, take a look at the following resources:
+Leitet Schlüsselmaterial mit HKDF ab.
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+**Parameter:**
+- `salt`: Salt-Wert für die Extraktion
+- `inputKeyMaterial`: Das Eingabeschlüsselmaterial
+- `length`: Die gewünschte Länge des abgeleiteten Schlüssels in Bytes
+
+**Rückgabe:**
+- `Promise<Uint8Array>`: Das abgeleitete Schlüsselmaterial
+
+### `DR_Init(params: DRInitParams): Promise<DRState>`
+
+Initialisiert den Double Ratchet State.
+
+**Parameter:**
+- `params.rootKey`: Root Key für die Schlüsselableitung
+- `params.ourIdentityKeyPair`: Unser Identity-Schlüsselpaar
+- `params.theirIdentityPublicKey`: Öffentlicher Identity-Schlüssel der Gegenseite
+- `params.ourEphemeralKeyPair`: Unser ephemerer Schlüssel
+- `params.theirEphemeralPublicKey`: Öffentlicher ephemerer Schlüssel der Gegenseite
+
+**Rückgabe:**
+- `Promise<DRState>`: Der initialisierte Double Ratchet State
+
+## 🔒 Sicherheitshinweise
+
+- **Zufällige Schlüssel**: Verwende immer kryptographisch sichere Zufallszahlen für Schlüssel und Salts
+- **Schlüsselverwaltung**: Bewahre private Schlüssel sicher auf und gebe sie niemals weiter
+- **Forward Secrecy**: Die Library implementiert Forward Secrecy durch regelmäßige Schlüsselrotation
+- **Authentifizierung**: Stelle sicher, dass öffentliche Schlüssel authentifiziert sind (z.B. durch Fingerprint-Vergleich)
+
+## 🛠️ Entwicklung
+
+### Projekt klonen
+
+```bash
+git clone https://github.com/yourusername/signal-protocol-react-lib.git
+cd signal-protocol-react-lib
+```
+
+### Dependencies installieren
+
+```bash
+npm install
+```
+
+### Build
+
+```bash
+npm run build
+```
+
+### Tests ausführen
+
+```bash
+npm test
+```
+
+## 📄 Lizenz
+
+MIT
+
+## 🤝 Beitragen
+
+Beiträge sind willkommen! Bitte erstelle einen Pull Request oder öffne ein Issue.
+
+## 📖 Weitere Ressourcen
+
+- [Signal Protocol Dokumentation](https://signal.org/docs/)
+- [Double Ratchet Algorithm](https://signal.org/docs/specifications/doubleratchet/)
+- [X3DH Key Agreement](https://signal.org/docs/specifications/x3dh/)
+- [RFC 5869 (HKDF)](https://tools.ietf.org/html/rfc5869)
+
