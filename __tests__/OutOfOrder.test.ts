@@ -13,11 +13,16 @@ describe('Out-of-Order Messages', () => {
     let bobEphemeralKeyPair: any;
     let rootKey: Uint8Array;
 
-    beforeEach(async () => {
+    // Optimierung: Generiere Schlüsselpaare nur einmal für alle Tests
+    beforeAll(async () => {
         aliceIdentityKeyPair = await generateKeyPair();
         bobIdentityKeyPair = await generateKeyPair();
         aliceEphemeralKeyPair = await generateKeyPair();
         bobEphemeralKeyPair = await generateKeyPair();
+    });
+
+    beforeEach(() => {
+        // Nur Root Key neu generieren (schnell)
         rootKey = crypto.getRandomValues(new Uint8Array(32));
     });
 

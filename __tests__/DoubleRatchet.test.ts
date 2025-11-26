@@ -14,14 +14,16 @@ describe('Double Ratchet', () => {
     let bobEphemeralKeyPair: any;
     let rootKey: Uint8Array;
 
-    beforeEach(async () => {
-        // Generiere Schlüsselpaare für Alice und Bob
+    // Optimierung: Generiere Schlüsselpaare nur einmal für alle Tests (spart ~100ms)
+    beforeAll(async () => {
         aliceIdentityKeyPair = await generateKeyPair();
         bobIdentityKeyPair = await generateKeyPair();
         aliceEphemeralKeyPair = await generateKeyPair();
         bobEphemeralKeyPair = await generateKeyPair();
+    });
 
-        // Generiere einen gemeinsamen Root Key (würde normalerweise aus X3DH kommen)
+    beforeEach(() => {
+        // Nur Root Key neu generieren (schnell, ~0.1ms)
         rootKey = crypto.getRandomValues(new Uint8Array(32));
     });
 
@@ -98,8 +100,9 @@ describe('Double Ratchet', () => {
             const [encryptedMessage, newAliceState] = await ratchetEncrypt(aliceState, plaintext);
 
             expect(encryptedMessage).toBeDefined();
-            expect(encryptedMessage.header.publicKey).toEqual(aliceState.ourEphemeralKeyPair.publicKey);
-            expect(encryptedMessage.header.messageNumber).toBe(0);
+            expect(encryptedMessage.header.dh).toEqual(aliceState.ourEphemeralKeyPair.publicKey);
+            expect(encryptedMessage.header.n).toBe(0);
+            expect(encryptedMessage.header.pn).toBe(0);
             expect(encryptedMessage.ciphertext).toBeInstanceOf(Uint8Array);
 
             // Bob entschlüsselt die Nachricht
@@ -141,7 +144,7 @@ describe('Double Ratchet', () => {
                 currentBobState = newBobState;
 
                 expect(new TextDecoder().decode(decryptedMessage)).toBe(`Nachricht ${i + 1}`);
-                expect(encryptedMessage.header.messageNumber).toBe(i);
+                expect(encryptedMessage.header.n).toBe(i);
             }
         });
 
@@ -206,7 +209,7 @@ describe('Double Ratchet', () => {
 
             for (let i = 0; i < 5; i++) {
                 const [msg, newState] = await ratchetEncrypt(currentState, new Uint8Array([i]));
-                expect(msg.header.messageNumber).toBe(i);
+                expect(msg.header.n).toBe(i);
                 expect(newState.messageNumbers.sending).toBe(i + 1);
                 currentState = newState;
             }

@@ -42,6 +42,7 @@ async function DR_Init(params) {
             sending: 0,
             receiving: 0
         },
+        pn: 0, // Previous Number: Initial 0
         skippedMessageKeys: new Map(),
         maxSkippedMessageKeys: 1000 // Standard: max 1000 skipped keys
     };

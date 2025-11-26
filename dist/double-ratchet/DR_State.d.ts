@@ -38,6 +38,11 @@ export interface DRState {
         receiving: number;
     };
     /**
+     * PN (Previous Number): Anzahl der Nachrichten in der vorherigen Sending Chain
+     * Wird bei DH Ratchet aktualisiert, damit Empfänger weiß, wie viele Messages übersprungen wurden
+     */
+    pn: number;
+    /**
      * Skipped Message Keys für Out-of-Order Messages
      * Map: "publicKey:messageNumber" -> SkippedMessageKey
      */

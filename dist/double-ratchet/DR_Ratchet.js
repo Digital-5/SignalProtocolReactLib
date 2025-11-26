@@ -27,16 +27,21 @@ async function performDHRatchet(state, theirPublicKey) {
     const derivedKeys2 = await hkdf.deriveKeys(newRootKey1, dhOutput2, 64);
     const newRootKey2 = derivedKeys2.slice(0, 32);
     const newSendingChainKey = derivedKeys2.slice(32, 64);
+    // Signal Spec: PN = Ns (Anzahl Nachrichten in vorheriger Sending Chain)
+    // Ns und Nr werden auf 0 zurückgesetzt
     return {
         rootKey: newRootKey2,
         sendingChainKey: newSendingChainKey,
         receivingChainKey: newReceivingChainKey,
         ourEphemeralKeyPair: newKeyPair,
         theirEphemeralPublicKey: theirPublicKey,
+        pn: state.messageNumbers.sending, // PN = alte Sending Chain Länge
         messageNumbers: {
-            sending: 0,
-            receiving: 0
-        }
+            sending: 0, // Reset auf 0
+            receiving: 0 // Reset auf 0
+        },
+        skippedMessageKeys: state.skippedMessageKeys, // Behalte vorhandene Skipped Keys
+        maxSkippedMessageKeys: state.maxSkippedMessageKeys
     };
 }
 /**
@@ -55,57 +60,77 @@ async function deriveMessageKey(chainKey) {
     return [newChainKey, messageKey];
 }
 /**
- * Verschlüsselt eine Nachricht mit AES-256-GCM
- * @param messageKey - Der Message Key für die Verschlüsselung
- * @param plaintext - Die zu verschlüsselnde Nachricht
- * @returns Die verschlüsselte Nachricht (inkl. IV)
+ * Serialisiert einen Message Header zu Bytes
+ * Format: dh_length(2) + dh + pn(4) + n(4)
  */
-async function encryptMessage(messageKey, plaintext) {
-    // Generiere einen zufälligen IV (12 Bytes für GCM)
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    // Importiere den Message Key
-    const key = await crypto.subtle.importKey('raw', messageKey, { name: 'AES-GCM' }, false, ['encrypt']);
-    // Verschlüssele die Nachricht
-    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
-    // Kombiniere IV + Ciphertext
-    const result = new Uint8Array(iv.length + ciphertext.byteLength);
-    result.set(iv);
-    result.set(new Uint8Array(ciphertext), iv.length);
+function serializeHeader(header) {
+    const dhLength = header.dh.length;
+    const result = new Uint8Array(2 + dhLength + 4 + 4);
+    const view = new DataView(result.buffer);
+    // DH Public Key Länge (2 Bytes)
+    view.setUint16(0, dhLength, false);
+    // DH Public Key
+    result.set(header.dh, 2);
+    // PN (4 Bytes)
+    view.setUint32(2 + dhLength, header.pn, false);
+    // N (4 Bytes)
+    view.setUint32(2 + dhLength + 4, header.n, false);
     return result;
 }
 /**
- * Entschlüsselt eine Nachricht mit AES-256-GCM
- * @param messageKey - Der Message Key für die Entschlüsselung (32 Bytes)
- * @param ciphertext - Die verschlüsselte Nachricht (inkl. IV)
- * @returns Die entschlüsselte Nachricht
+ * Konkateniert zwei Uint8Arrays
  */
-async function decryptMessage(messageKey, ciphertext) {
+function concatUint8Arrays(a, b) {
+    const result = new Uint8Array(a.length + b.length);
+    result.set(a);
+    result.set(b, a.length);
+    return result;
+}
+/**
+ * Entschlüsselt eine Nachricht mit Associated Data (AEAD)
+ * Signal Spec: DECRYPT(mk, ciphertext, CONCAT(AD, header))
+ */
+async function decryptMessageWithAD(messageKey, ciphertext, header, associatedData) {
     // Extrahiere IV und Ciphertext
     const iv = ciphertext.slice(0, 12);
     const actualCiphertext = ciphertext.slice(12);
     // Importiere den Message Key (verwende nur die ersten 32 Bytes für AES-256)
     const key = await crypto.subtle.importKey('raw', messageKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-    // Entschlüssele die Nachricht
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, actualCiphertext);
+    // CONCAT(AD, header): Kombiniere AD + serialisierter Header
+    const headerBytes = serializeHeader(header);
+    const ad = associatedData
+        ? concatUint8Arrays(associatedData, headerBytes)
+        : headerBytes;
+    // Entschlüssele mit AEAD (GCM verifiziert AD automatisch)
+    const plaintext = await crypto.subtle.decrypt({
+        name: 'AES-GCM',
+        iv: iv,
+        additionalData: ad
+    }, key, actualCiphertext);
     return new Uint8Array(plaintext);
 }
 /**
  * Verschlüsselt eine Nachricht und aktualisiert den State (Ratchet Step)
+ * Signal Protocol kompatibel mit PN und AD Support
  * @param state - Aktueller Double Ratchet State
  * @param plaintext - Die zu verschlüsselnde Nachricht
+ * @param associatedData - Optional: Associated Data für AEAD (wird authentifiziert, aber nicht verschlüsselt)
  * @returns Tuple mit [verschlüsselte Nachricht, aktualisierter State]
  */
-async function ratchetEncrypt(state, plaintext) {
+async function ratchetEncrypt(state, plaintext, associatedData) {
     // Leite Message Key aus Sending Chain Key ab
     const [newSendingChainKey, messageKey] = await deriveMessageKey(state.sendingChainKey);
-    // Verschlüssele die Nachricht
-    const ciphertext = await encryptMessage(messageKey, plaintext);
-    // Erstelle die verschlüsselte Nachricht mit Header
+    // Erstelle Header (Signal Spec: HEADER(DHs, PN, Ns))
+    const header = {
+        dh: state.ourEphemeralKeyPair.publicKey,
+        pn: state.pn,
+        n: state.messageNumbers.sending
+    };
+    // Verschlüssele die Nachricht mit AD (Signal Spec: ENCRYPT(mk, plaintext, CONCAT(AD, header)))
+    const ciphertext = await encryptMessageWithAD(messageKey, plaintext, header, associatedData);
+    // Erstelle die verschlüsselte Nachricht
     const message = {
-        header: {
-            publicKey: state.ourEphemeralKeyPair.publicKey,
-            messageNumber: state.messageNumbers.sending
-        },
+        header,
         ciphertext
     };
     // Aktualisiere den State
@@ -120,22 +145,51 @@ async function ratchetEncrypt(state, plaintext) {
     return [message, newState];
 }
 /**
+ * Verschlüsselt eine Nachricht mit Associated Data (AEAD)
+ * Signal Spec: ENCRYPT(mk, plaintext, CONCAT(AD, header))
+ */
+async function encryptMessageWithAD(messageKey, plaintext, header, associatedData) {
+    // Generiere einen zufälligen IV (12 Bytes für GCM)
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    // Importiere den Message Key
+    const key = await crypto.subtle.importKey('raw', messageKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+    // CONCAT(AD, header): Kombiniere AD + serialisierter Header
+    const headerBytes = serializeHeader(header);
+    const ad = associatedData
+        ? concatUint8Arrays(associatedData, headerBytes)
+        : headerBytes;
+    // Verschlüssele mit AEAD (GCM authentifiziert AD automatisch)
+    const ciphertext = await crypto.subtle.encrypt({
+        name: 'AES-GCM',
+        iv: iv,
+        additionalData: ad
+    }, key, plaintext);
+    // Kombiniere IV + Ciphertext
+    const result = new Uint8Array(iv.length + ciphertext.byteLength);
+    result.set(iv);
+    result.set(new Uint8Array(ciphertext), iv.length);
+    return result;
+}
+/**
  * Entschlüsselt eine Nachricht und aktualisiert den State (Ratchet Step)
+ * Signal Protocol kompatibel mit PN und AD Support
  * Unterstützt Out-of-Order Messages durch Skipped Message Keys
  * @param state - Aktueller Double Ratchet State
  * @param message - Die verschlüsselte Nachricht
+ * @param associatedData - Optional: Associated Data für AEAD-Verifikation
  * @returns Tuple mit [entschlüsselte Nachricht, aktualisierter State]
  */
-async function ratchetDecrypt(state, message) {
-    const receivedPublicKey = message.header.publicKey;
-    const messageNumber = message.header.messageNumber;
+async function ratchetDecrypt(state, message, associatedData) {
+    const receivedPublicKey = message.header.dh;
+    const messageNumber = message.header.n;
+    const previousNumber = message.header.pn;
     // Erstelle Schlüssel für Skipped Message Keys Map
     const skippedKeyId = createSkippedKeyId(receivedPublicKey, messageNumber);
     // 1. Prüfe, ob wir bereits einen Skipped Message Key für diese Nachricht haben
     const skippedKey = state.skippedMessageKeys.get(skippedKeyId);
     if (skippedKey) {
         // Entschlüssele mit dem gespeicherten Key
-        const plaintext = await decryptMessage(skippedKey.messageKey, message.ciphertext);
+        const plaintext = await decryptMessageWithAD(skippedKey.messageKey, message.ciphertext, message.header, associatedData);
         // Entferne den verwendeten Key
         const newSkippedKeys = new Map(state.skippedMessageKeys);
         newSkippedKeys.delete(skippedKeyId);
@@ -148,18 +202,19 @@ async function ratchetDecrypt(state, message) {
     const keysAreDifferent = !arraysEqual(receivedPublicKey, state.theirEphemeralPublicKey);
     let currentState = state;
     if (keysAreDifferent) {
-        // Speichere alle Skipped Message Keys bis zum aktuellen Message Number
-        currentState = await skipMessageKeys(currentState, state.messageNumbers.receiving);
+        // Signal Spec: SkipMessageKeys(previousNumber)
+        // Überspringe Nachrichten in der ALTEN Receiving Chain basierend auf PN
+        currentState = await skipMessageKeys(currentState, previousNumber);
         // Führe DH Ratchet aus
         currentState = await performDHRatchet(currentState, receivedPublicKey);
     }
-    // 3. Überspringe Nachrichten, die wir nicht erhalten haben (Out-of-Order)
+    // 3. Überspringe Nachrichten in der AKTUELLEN Receiving Chain (Out-of-Order)
     if (messageNumber > currentState.messageNumbers.receiving) {
         currentState = await skipMessageKeys(currentState, messageNumber);
     }
     // 4. Leite Message Key ab und entschlüssele
     const [newReceivingChainKey, messageKey] = await deriveMessageKey(currentState.receivingChainKey);
-    const plaintext = await decryptMessage(messageKey, message.ciphertext);
+    const plaintext = await decryptMessageWithAD(messageKey, message.ciphertext, message.header, associatedData);
     // 5. Aktualisiere State
     const newState = {
         ...currentState,
