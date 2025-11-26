@@ -4,7 +4,7 @@ exports.HKDF = void 0;
 /**
  * HKDF (HMAC-based Key Derivation Function) Implementierung
  * Basierend auf RFC 5869 für sichere Schlüsselableitung
- * Verwendet SHA-256 als Standard-Hash-Algorithmus
+ * Verwendet SHA-512 als Standard-Hash-Algorithmus für Post-Quantum Sicherheit
  */
 class HKDF {
     hash;

@@ -45,8 +45,8 @@ export async function DR_Init(params: DRInitParams): Promise<DRState> {
     combinedSecret.set(dh1);
     combinedSecret.set(dh2, dh1.length);
 
-    // Schritt 3: Verwende HKDF zur Ableitung von Root Key und Chain Keys
-    const hkdf = new HKDF('SHA-256');
+    // Schritt 3: Verwende HKDF zur Ableitung von Root Key und Chain Keys (SHA-512 für Post-Quantum Sicherheit)
+    const hkdf = new HKDF('SHA-512');
     const derivedKeys = await hkdf.deriveKeys(rootKey, combinedSecret, 96); // 96 Bytes für Root und Chain Keys
 
     // Teile die abgeleiteten Schlüssel auf
@@ -69,6 +69,8 @@ export async function DR_Init(params: DRInitParams): Promise<DRState> {
         messageNumbers: {
             sending: 0,
             receiving: 0
-        }
+        },
+        skippedMessageKeys: new Map(),
+        maxSkippedMessageKeys: 1000 // Standard: max 1000 skipped keys
     };
 }

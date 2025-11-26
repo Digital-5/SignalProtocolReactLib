@@ -33,7 +33,7 @@ export async function performDHRatchet(state: DRState, theirPublicKey: Uint8Arra
     const dhOutput = await deriveSharedSecret(state.ourEphemeralKeyPair.privateKey, theirPublicKey);
 
     // Leite neue Root Key und Receiving Chain Key ab
-    const hkdf = new HKDF('SHA-256');
+    const hkdf = new HKDF('SHA-512');
     const derivedKeys1 = await hkdf.deriveKeys(state.rootKey, dhOutput, 64);
     const newRootKey1 = derivedKeys1.slice(0, 32);
     const newReceivingChainKey = derivedKeys1.slice(32, 64);
@@ -55,7 +55,9 @@ export async function performDHRatchet(state: DRState, theirPublicKey: Uint8Arra
         messageNumbers: {
             sending: 0,
             receiving: 0
-        }
+        },
+        skippedMessageKeys: state.skippedMessageKeys, // Behalte vorhandene Skipped Keys
+        maxSkippedMessageKeys: state.maxSkippedMessageKeys
     };
 }
 
@@ -184,6 +186,7 @@ export async function ratchetEncrypt(
 
 /**
  * Entschlüsselt eine Nachricht und aktualisiert den State (Ratchet Step)
+ * Unterstützt Out-of-Order Messages durch Skipped Message Keys
  * @param state - Aktueller Double Ratchet State
  * @param message - Die verschlüsselte Nachricht
  * @returns Tuple mit [entschlüsselte Nachricht, aktualisierter State]
@@ -192,38 +195,119 @@ export async function ratchetDecrypt(
     state: DRState,
     message: RatchetMessage
 ): Promise<[Uint8Array, DRState]> {
+    const receivedPublicKey = message.header.publicKey;
+    const messageNumber = message.header.messageNumber;
+
+    // Erstelle Schlüssel für Skipped Message Keys Map
+    const skippedKeyId = createSkippedKeyId(receivedPublicKey, messageNumber);
+
+    // 1. Prüfe, ob wir bereits einen Skipped Message Key für diese Nachricht haben
+    const skippedKey = state.skippedMessageKeys.get(skippedKeyId);
+    if (skippedKey) {
+        // Entschlüssele mit dem gespeicherten Key
+        const plaintext = await decryptMessage(skippedKey.messageKey, message.ciphertext);
+
+        // Entferne den verwendeten Key
+        const newSkippedKeys = new Map(state.skippedMessageKeys);
+        newSkippedKeys.delete(skippedKeyId);
+
+        return [plaintext, {
+            ...state,
+            skippedMessageKeys: newSkippedKeys
+        }];
+    }
+
+    // 2. Prüfe, ob wir einen DH Ratchet Step durchführen müssen
+    const keysAreDifferent = !arraysEqual(receivedPublicKey, state.theirEphemeralPublicKey);
     let currentState = state;
 
-    // Prüfe, ob wir einen DH Ratchet Step durchführen müssen
-    // (wenn sich der öffentliche Schlüssel der Gegenseite geändert hat)
-    const receivedPublicKey = message.header.publicKey;
-    const currentPublicKey = state.theirEphemeralPublicKey;
-
-    // Vergleiche die öffentlichen Schlüssel
-    const keysAreDifferent = !arraysEqual(receivedPublicKey, currentPublicKey);
-
     if (keysAreDifferent) {
+        // Speichere alle Skipped Message Keys bis zum aktuellen Message Number
+        currentState = await skipMessageKeys(currentState, state.messageNumbers.receiving);
+
         // Führe DH Ratchet aus
         currentState = await performDHRatchet(currentState, receivedPublicKey);
     }
 
-    // Leite Message Key aus Receiving Chain Key ab
-    const [newReceivingChainKey, messageKey] = await deriveMessageKey(currentState.receivingChainKey);
+    // 3. Überspringe Nachrichten, die wir nicht erhalten haben (Out-of-Order)
+    if (messageNumber > currentState.messageNumbers.receiving) {
+        currentState = await skipMessageKeys(currentState, messageNumber);
+    }
 
-    // Entschlüssele die Nachricht
+    // 4. Leite Message Key ab und entschlüssele
+    const [newReceivingChainKey, messageKey] = await deriveMessageKey(currentState.receivingChainKey);
     const plaintext = await decryptMessage(messageKey, message.ciphertext);
 
-    // Aktualisiere den State
+    // 5. Aktualisiere State
     const newState: DRState = {
         ...currentState,
         receivingChainKey: newReceivingChainKey,
         messageNumbers: {
             ...currentState.messageNumbers,
-            receiving: message.header.messageNumber + 1
+            receiving: messageNumber + 1
         }
     };
 
     return [plaintext, newState];
+}
+
+/**
+ * Überspringt Message Keys für fehlende Nachrichten (Out-of-Order)
+ * @param state - Aktueller State
+ * @param untilMessageNumber - Bis zu welcher Message Number übersprungen werden soll
+ * @returns Aktualisierter State mit gespeicherten Skipped Message Keys
+ */
+async function skipMessageKeys(state: DRState, untilMessageNumber: number): Promise<DRState> {
+    const maxSkip = state.maxSkippedMessageKeys || 1000;
+    const currentReceiving = state.messageNumbers.receiving;
+
+    // DoS-Schutz: Verhindere zu viele Skipped Keys
+    if (untilMessageNumber - currentReceiving > maxSkip) {
+        throw new Error(`Too many skipped messages: ${untilMessageNumber - currentReceiving} > ${maxSkip}`);
+    }
+
+    let currentChainKey = state.receivingChainKey;
+    const newSkippedKeys = new Map(state.skippedMessageKeys);
+
+    // Leite Message Keys für alle übersprungenen Nachrichten ab
+    for (let i = currentReceiving; i < untilMessageNumber; i++) {
+        const [newChainKey, messageKey] = await deriveMessageKey(currentChainKey);
+
+        // Speichere den Message Key
+        const keyId = createSkippedKeyId(state.theirEphemeralPublicKey, i);
+        newSkippedKeys.set(keyId, {
+            messageKey: messageKey,
+            timestamp: Date.now()
+        });
+
+        currentChainKey = newChainKey;
+    }
+
+    // Cleanup alte Skipped Keys (älter als 7 Tage)
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const [keyId, skippedKey] of newSkippedKeys.entries()) {
+        if (skippedKey.timestamp < sevenDaysAgo) {
+            newSkippedKeys.delete(keyId);
+        }
+    }
+
+    return {
+        ...state,
+        receivingChainKey: currentChainKey,
+        skippedMessageKeys: newSkippedKeys
+    };
+}
+
+/**
+ * Erstellt einen eindeutigen Identifier für einen Skipped Message Key
+ * @param publicKey - Der öffentliche Schlüssel
+ * @param messageNumber - Die Message Number
+ * @returns String-Identifier im Format "base64(publicKey):messageNumber"
+ */
+function createSkippedKeyId(publicKey: Uint8Array, messageNumber: number): string {
+    // Konvertiere Public Key zu Base64 für Map-Key
+    const keyBase64 = btoa(String.fromCharCode(...Array.from(publicKey)));
+    return `${keyBase64}:${messageNumber}`;
 }
 
 /**

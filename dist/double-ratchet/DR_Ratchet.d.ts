@@ -31,6 +31,7 @@ export declare function performDHRatchet(state: DRState, theirPublicKey: Uint8Ar
 export declare function ratchetEncrypt(state: DRState, plaintext: Uint8Array): Promise<[RatchetMessage, DRState]>;
 /**
  * Entschlüsselt eine Nachricht und aktualisiert den State (Ratchet Step)
+ * Unterstützt Out-of-Order Messages durch Skipped Message Keys
  * @param state - Aktueller Double Ratchet State
  * @param message - Die verschlüsselte Nachricht
  * @returns Tuple mit [entschlüsselte Nachricht, aktualisierter State]

@@ -4,6 +4,17 @@
  */
 
 /**
+ * Skipped Message Key Entry
+ * Speichert Message Keys für Nachrichten, die übersprungen wurden
+ */
+export interface SkippedMessageKey {
+    /** Der Message Key für die Entschlüsselung */
+    messageKey: Uint8Array;
+    /** Zeitstempel, wann dieser Key erstellt wurde */
+    timestamp: number;
+}
+
+/**
  * Der State des Double Ratchet Algorithmus
  * Enthält alle Schlüssel und Zähler für sichere Nachrichtenverschlüsselung
  */
@@ -28,4 +39,11 @@ export interface DRState {
         /** Anzahl empfangener Nachrichten */
         receiving: number;
     };
+    /**
+     * Skipped Message Keys für Out-of-Order Messages
+     * Map: "publicKey:messageNumber" -> SkippedMessageKey
+     */
+    skippedMessageKeys: Map<string, SkippedMessageKey>;
+    /** Maximale Anzahl an Skipped Message Keys (DoS-Schutz) */
+    maxSkippedMessageKeys?: number;
 }
