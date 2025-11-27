@@ -67,6 +67,22 @@ class HKDF {
         return okm.slice(0, length);
     }
     /**
+     * Leitet Schlüssel für Header Encryption ab (KDF_RK_HE aus Signal Spec Section 4.2)
+     * Gibt Root Key + Chain Key + Next Header Key zurück
+     *
+     * @param salt - Salt für HKDF (z.B. Root Key)
+     * @param inputKeyMaterial - Input Key Material (z.B. DH Output)
+     * @returns Tuple mit [Root Key (32 Bytes), Chain Key (32 Bytes), Next Header Key (32 Bytes)]
+     */
+    async deriveKeysHE(salt, inputKeyMaterial) {
+        // Signal Spec Section 4.2: KDF_RK_HE(rk, dh_out) returns (RK, CK, NHK)
+        const derived = await this.deriveKeys(salt, inputKeyMaterial, 96); // 32 + 32 + 32 = 96 Bytes
+        const rootKey = derived.slice(0, 32);
+        const chainKey = derived.slice(32, 64);
+        const nextHeaderKey = derived.slice(64, 96);
+        return [rootKey, chainKey, nextHeaderKey];
+    }
+    /**
      * Konkateniert zwei Uint8Arrays
      * @param a - Erstes Array
      * @param b - Zweites Array

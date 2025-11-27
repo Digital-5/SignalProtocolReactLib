@@ -85,3 +85,37 @@ export interface DRState {
      */
     maxSkippedMessageKeys?: number;
 }
+
+/**
+ * Double Ratchet State mit Header Encryption
+ * Signal Protocol Specification Section 4.3
+ * Erweitert DRState um Header Encryption Keys
+ */
+export interface DRStateHE extends DRState {
+    // Signal Spec Section 4.3: HKs, HKr (32-byte Header Keys)
+    /**
+     * Sending Header Key (HKs in Signal Spec)
+     * Wird verwendet, um Header der aktuellen Sending Chain zu verschlüsseln
+     */
+    sendingHeaderKey: Uint8Array;
+
+    /**
+     * Receiving Header Key (HKr in Signal Spec)
+     * Wird verwendet, um Header der aktuellen Receiving Chain zu entschlüsseln
+     */
+    receivingHeaderKey: Uint8Array | null;
+
+    // Signal Spec Section 4.3: NHKs, NHKr (32-byte Next Header Keys)
+    /**
+     * Next Sending Header Key (NHKs in Signal Spec)
+     * Wird zur nächsten Sending Header Key nach DH Ratchet
+     */
+    nextSendingHeaderKey: Uint8Array;
+
+    /**
+     * Next Receiving Header Key (NHKr in Signal Spec)
+     * Wird zur nächsten Receiving Header Key nach DH Ratchet
+     */
+    nextReceivingHeaderKey: Uint8Array;
+}
+

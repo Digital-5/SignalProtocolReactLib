@@ -33,6 +33,15 @@ export declare class HKDF {
      */
     private expand;
     /**
+     * Leitet Schlüssel für Header Encryption ab (KDF_RK_HE aus Signal Spec Section 4.2)
+     * Gibt Root Key + Chain Key + Next Header Key zurück
+     *
+     * @param salt - Salt für HKDF (z.B. Root Key)
+     * @param inputKeyMaterial - Input Key Material (z.B. DH Output)
+     * @returns Tuple mit [Root Key (32 Bytes), Chain Key (32 Bytes), Next Header Key (32 Bytes)]
+     */
+    deriveKeysHE(salt: Uint8Array, inputKeyMaterial: Uint8Array): Promise<[Uint8Array, Uint8Array, Uint8Array]>;
+    /**
      * Konkateniert zwei Uint8Arrays
      * @param a - Erstes Array
      * @param b - Zweites Array

@@ -116,11 +116,69 @@ def DHRatchet(state, header):
 
 ---
 
-## ⏳ Section 4: Header Encryption - NICHT IMPLEMENTIERT
+## ✅ Section 4: Header Encryption - VOLLSTÄNDIG IMPLEMENTIERT
 
-Header Encryption (Section 4) ist **optional** und wurde **nicht implementiert**.
+Header Encryption (Section 4) ist **vollständig implementiert** als separate Funktionen.
 
-**Grund:** Fokus auf Standard Double Ratchet (Section 3). Header Encryption kann später hinzugefügt werden.
+### 4.2 External Functions
+
+| Signal Spec | Unsere Implementierung | Status |
+|-------------|------------------------|--------|
+| `HENCRYPT(hk, plaintext)` | `encryptHeader()` | ✅ AES-256-GCM |
+| `HDECRYPT(hk, ciphertext)` | `decryptHeader()` | ✅ AES-256-GCM |
+| `KDF_RK_HE(rk, dh_out)` | `HKDF.deriveKeysHE()` | ✅ HKDF-SHA512 |
+
+### 4.3 State Variables
+
+| Signal Spec Variable | Unsere Implementierung | Status |
+|---------------------|------------------------|--------|
+| `HKs` | `sendingHeaderKey` | ✅ |
+| `HKr` | `receivingHeaderKey` | ✅ |
+| `NHKs` | `nextSendingHeaderKey` | ✅ |
+| `NHKr` | `nextReceivingHeaderKey` | ✅ |
+
+**Interface:** `DRStateHE extends DRState`
+
+### 4.4 Initialization
+
+| Signal Spec Funktion | Unsere Implementierung | Status |
+|---------------------|------------------------|--------|
+| `RatchetInitAliceHE()` | `DR_InitHE(..., isInitiator: true)` | ✅ |
+| `RatchetInitBobHE()` | `DR_InitHE(..., isInitiator: false)` | ✅ |
+
+### 4.5 & 4.6 Encrypting/Decrypting Messages
+
+| Signal Spec Funktion | Unsere Implementierung | Status |
+|---------------------|------------------------|--------|
+| `RatchetEncryptHE()` | `ratchetEncryptHE()` | ✅ |
+| `RatchetDecryptHE()` | `ratchetDecryptHE()` | ✅ |
+| `TrySkippedMessageKeysHE()` | Integriert | ✅ |
+| `DecryptHeader()` | `decryptHeaderHE()` | ✅ |
+| `SkipMessageKeysHE()` | `skipMessageKeysHE()` | ✅ |
+| `DHRatchetHE()` | `performDHRatchetHE()` | ✅ |
+
+**Verwendung:**
+```typescript
+import { DR_InitHE, ratchetEncryptHE, ratchetDecryptHE, DRStateHE } from 'signal-protocol-react-lib';
+
+// Initialisierung mit Header Encryption
+const state: DRStateHE = await DR_InitHE({
+    rootKey,
+    ourIdentityKeyPair,
+    theirIdentityPublicKey,
+    ourEphemeralKeyPair,
+    theirEphemeralPublicKey,
+    sharedSendingHeaderKey,
+    sharedNextReceivingHeaderKey,
+    isInitiator: true
+});
+
+// Verschlüsseln mit verschlüsseltem Header
+const [message, newState] = await ratchetEncryptHE(state, plaintext, associatedData);
+
+// Entschlüsseln
+const [decrypted, newState2] = await ratchetDecryptHE(state, message, associatedData);
+```
 
 ---
 
@@ -196,7 +254,7 @@ Triple Ratchet kombiniert Double Ratchet + SPQR für hybride Post-Quantum Securi
 | Kategorie | Status | Details |
 |-----------|--------|---------|
 | **Section 3: Double Ratchet** | ✅ **100%** | Vollständig implementiert |
-| **Section 4: Header Encryption** | ⏳ **0%** | Optional, nicht implementiert |
+| **Section 4: Header Encryption** | ✅ **100%** | Vollständig implementiert |
 | **Section 5: SPQR** | ⏳ **0%** | Für PQXDH, nicht implementiert |
 | **Section 6: Triple Ratchet** | ⏳ **0%** | Benötigt SPQR |
 | **Section 7: Recommendations** | ✅ **95%** | X25519, HKDF-SHA512, AES-GCM |
@@ -206,25 +264,26 @@ Triple Ratchet kombiniert Double Ratchet + SPQR für hybride Post-Quantum Securi
 
 ## 🎯 Conclusion
 
-**Die Implementierung ist 100% konform mit der Signal Protocol Double Ratchet Specification (Section 3).**
+**Die Implementierung ist 100% konform mit der Signal Protocol Double Ratchet Specification (Section 3 & 4).**
 
 ### ✅ Was funktioniert:
-- Double Ratchet (Section 3) vollständig
-- X25519 (Curve25519) gemäß Empfehlung
-- HKDF-SHA512 für KDF
-- AES-256-GCM für AEAD
-- Out-of-Order Message Handling
-- PN (Previous Number) Support
-- Associated Data Support
-- MAX_SKIP DoS Protection
+- ✅ **Double Ratchet (Section 3)** vollständig
+- ✅ **Header Encryption (Section 4)** vollständig
+- ✅ X25519 (Curve25519) gemäß Empfehlung
+- ✅ HKDF-SHA512 für KDF
+- ✅ AES-256-GCM für AEAD
+- ✅ Out-of-Order Message Handling
+- ✅ PN (Previous Number) Support
+- ✅ Associated Data Support
+- ✅ MAX_SKIP DoS Protection
+- ✅ Header Keys (HKs, HKr, NHKs, NHKr)
 
 ### ⏳ Was noch nicht implementiert ist:
-- Header Encryption (Section 4) - Optional
-- SPQR (Section 5) - Für PQXDH
+- SPQR (Section 5) - Für PQXDH / Post-Quantum
 - Triple Ratchet (Section 6) - Für Hybrid PQ Security
 
 ### 🎉 Fazit:
-**Die Library ist produktionsbereit für Standard Double Ratchet Messaging gemäß Signal Protocol!**
+**Die Library ist produktionsbereit für Double Ratchet Messaging mit optionaler Header Encryption gemäß Signal Protocol!**
 
 ---
 

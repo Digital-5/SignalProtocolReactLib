@@ -26,3 +26,7 @@ __exportStar(require("./HKDF"), exports);
 __exportStar(require("./DR_State"), exports);
 __exportStar(require("./DR_Init"), exports);
 __exportStar(require("./DR_Ratchet"), exports);
+// Header Encryption (Signal Protocol Section 4)
+__exportStar(require("./HeaderEncryption"), exports);
+__exportStar(require("./DR_Init_HE"), exports);
+__exportStar(require("./DR_Ratchet_HE"), exports);
