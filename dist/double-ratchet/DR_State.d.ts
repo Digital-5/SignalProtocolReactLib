@@ -32,9 +32,9 @@ export interface DRState {
     /** Root Key für die Ableitung neuer Chain Keys */
     rootKey: Uint8Array;
     /** Chain Key für ausgehende Nachrichten (CKs in Signal Spec) */
-    sendingChainKey: Uint8Array;
+    sendingChainKey: Uint8Array | null;
     /** Chain Key für eingehende Nachrichten (CKr in Signal Spec) */
-    receivingChainKey: Uint8Array;
+    receivingChainKey: Uint8Array | null;
     /** Unser aktuelles ephemeres Schlüsselpaar (DHs in Signal Spec) */
     ourEphemeralKeyPair: {
         publicKey: Uint8Array;
@@ -77,8 +77,9 @@ export interface DRStateHE extends DRState {
     /**
      * Sending Header Key (HKs in Signal Spec)
      * Wird verwendet, um Header der aktuellen Sending Chain zu verschlüsseln
+     * Signal Spec: Can be None (null) before first DH ratchet (Bob's initial state)
      */
-    sendingHeaderKey: Uint8Array;
+    sendingHeaderKey: Uint8Array | null;
     /**
      * Receiving Header Key (HKr in Signal Spec)
      * Wird verwendet, um Header der aktuellen Receiving Chain zu entschlüsseln

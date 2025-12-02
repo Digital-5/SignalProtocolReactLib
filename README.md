@@ -2,15 +2,12 @@
 
 Eine TypeScript-Implementierung des **Signal Protocol** für sichere End-to-End-Verschlüsselung.
 
-✅ **100% konform mit der [Signal Protocol Double Ratchet Specification (Revision 4)](https://signal.org/docs/specifications/doubleratchet/)**
-
-📄 Siehe [SIGNAL_SPEC_COMPLIANCE.md](./SIGNAL_SPEC_COMPLIANCE.md) für Details zur Spec-Konformität.
-
 ## 📋 Inhaltsverzeichnis
 
 - [Features](#features)
 - [Installation](#installation)
 - [Verwendung](#verwendung)
+- [Verwendungsanleitungen](./USAGE.md) 📖 **Detaillierte Szenarien**
 - [API-Dokumentation](#api-dokumentation)
 - [Signal Spec Compliance](#signal-spec-compliance)
 - [Sicherheitshinweise](#sicherheitshinweise)
@@ -31,14 +28,49 @@ Eine TypeScript-Implementierung des **Signal Protocol** für sichere End-to-End-
 
 ## 📦 Installation
 
+### Für lokale Entwicklung:
+
 ```bash
-npm install signal-protocol-react-lib
+# Repository klonen
+git clone ...
+cd SignalProtocolReactLib
+
+# Dependencies installieren
+npm install
+
+# Tests ausführen
+npm test
+
+# Build erstellen
+npm run build
 ```
 
-oder mit yarn:
+### In ein anderes Projekt einbinden:
+
+**Option 1: npm link (Entwicklung)**
 
 ```bash
-yarn add signal-protocol-react-lib
+# Im SignalProtocolReactLib Verzeichnis:
+npm link
+
+# In deinem Projekt:
+npm link signal-protocol-react-lib
+```
+
+**Option 2: Direkter Pfad in package.json**
+
+```json
+{
+  "dependencies": {
+    "signal-protocol-react-lib": "file:../SignalProtocolReactLib"
+  }
+}
+```
+
+**Option 3: Git Repository**
+
+```bash
+npm install git+https://github.com/dein-username/SignalProtocolReactLib.git
 ```
 
 ## 🚀 Verwendung
@@ -46,7 +78,11 @@ yarn add signal-protocol-react-lib
 ### Grundlegende Verwendung
 
 ```typescript
-import { generateKeyPair, deriveSharedSecret, HKDF, DR_Init } from 'signal-protocol-react-lib';
+// Bei lokaler Entwicklung (innerhalb des Projekts):
+import {generateKeyPair, deriveSharedSecret, HKDF, DR_Init} from './src/double-ratchet';
+
+// Oder wenn als Package eingebunden:
+// import { generateKeyPair, deriveSharedSecret, HKDF, DR_Init } from 'signal-protocol-react-lib';
 
 // 1. Generiere Schlüsselpaare
 const ourIdentityKeyPair = await generateKeyPair();
@@ -61,11 +97,11 @@ const rootKey = new Uint8Array(32); // 32 zufällige Bytes
 
 // 4. Initialisiere den Double Ratchet State
 const drState = await DR_Init({
-  rootKey,
-  ourIdentityKeyPair,
-  theirIdentityPublicKey,
-  ourEphemeralKeyPair,
-  theirEphemeralPublicKey
+    rootKey,
+    ourIdentityKeyPair,
+    theirIdentityPublicKey,
+    ourEphemeralKeyPair,
+    theirEphemeralPublicKey
 });
 
 console.log('Double Ratchet State initialisiert:', drState);
@@ -74,7 +110,7 @@ console.log('Double Ratchet State initialisiert:', drState);
 ### ECDH Schlüsselaustausch
 
 ```typescript
-import { generateKeyPair, deriveSharedSecret } from 'signal-protocol-react-lib';
+import {generateKeyPair, deriveSharedSecret} from 'signal-protocol-react-lib';
 
 // Generiere zwei Schlüsselpaare
 const aliceKeyPair = await generateKeyPair();
@@ -82,13 +118,13 @@ const bobKeyPair = await generateKeyPair();
 
 // Beide Seiten können dasselbe gemeinsame Geheimnis ableiten
 const aliceSharedSecret = await deriveSharedSecret(
-  aliceKeyPair.privateKey,
-  bobKeyPair.publicKey
+    aliceKeyPair.privateKey,
+    bobKeyPair.publicKey
 );
 
 const bobSharedSecret = await deriveSharedSecret(
-  bobKeyPair.privateKey,
-  aliceKeyPair.publicKey
+    bobKeyPair.privateKey,
+    aliceKeyPair.publicKey
 );
 
 // aliceSharedSecret === bobSharedSecret
@@ -97,7 +133,7 @@ const bobSharedSecret = await deriveSharedSecret(
 ### HKDF Schlüsselableitung
 
 ```typescript
-import { HKDF } from 'signal-protocol-react-lib';
+import {HKDF} from 'signal-protocol-react-lib';
 
 const hkdf = new HKDF('SHA-256');
 
@@ -118,6 +154,7 @@ const key2 = derivedKeys.slice(32, 64);
 Generiert ein neues ECDH-Schlüsselpaar (P-256).
 
 **Rückgabe:**
+
 - `Promise<KeyPair>`: Ein Objekt mit `publicKey` und `privateKey` als `Uint8Array`
 
 ### `deriveSharedSecret(privateKeyBytes: Uint8Array, publicKeyBytes: Uint8Array): Promise<Uint8Array>`
@@ -125,10 +162,12 @@ Generiert ein neues ECDH-Schlüsselpaar (P-256).
 Leitet ein gemeinsames Geheimnis mittels ECDH ab.
 
 **Parameter:**
+
 - `privateKeyBytes`: Unser privater Schlüssel (PKCS#8 Format)
 - `publicKeyBytes`: Öffentlicher Schlüssel der Gegenseite (Raw Format)
 
 **Rückgabe:**
+
 - `Promise<Uint8Array>`: Das abgeleitete gemeinsame Geheimnis (32 Bytes)
 
 ### `HKDF`
@@ -140,6 +179,7 @@ Klasse für HMAC-based Key Derivation Function.
 Erstellt eine neue HKDF-Instanz.
 
 **Parameter:**
+
 - `hash` (optional): Der zu verwendende Hash-Algorithmus (Standard: `'SHA-256'`)
 
 #### `deriveKeys(salt: Uint8Array, inputKeyMaterial: Uint8Array, length: number): Promise<Uint8Array>`
@@ -147,11 +187,13 @@ Erstellt eine neue HKDF-Instanz.
 Leitet Schlüsselmaterial mit HKDF ab.
 
 **Parameter:**
+
 - `salt`: Salt-Wert für die Extraktion
 - `inputKeyMaterial`: Das Eingabeschlüsselmaterial
 - `length`: Die gewünschte Länge des abgeleiteten Schlüssels in Bytes
 
 **Rückgabe:**
+
 - `Promise<Uint8Array>`: Das abgeleitete Schlüsselmaterial
 
 ### `DR_Init(params: DRInitParams): Promise<DRState>`
@@ -159,6 +201,7 @@ Leitet Schlüsselmaterial mit HKDF ab.
 Initialisiert den Double Ratchet State.
 
 **Parameter:**
+
 - `params.rootKey`: Root Key für die Schlüsselableitung
 - `params.ourIdentityKeyPair`: Unser Identity-Schlüsselpaar
 - `params.theirIdentityPublicKey`: Öffentlicher Identity-Schlüssel der Gegenseite
@@ -166,6 +209,7 @@ Initialisiert den Double Ratchet State.
 - `params.theirEphemeralPublicKey`: Öffentlicher ephemerer Schlüssel der Gegenseite
 
 **Rückgabe:**
+
 - `Promise<DRState>`: Der initialisierte Double Ratchet State
 
 ## 🔒 Sicherheitshinweise
@@ -173,7 +217,8 @@ Initialisiert den Double Ratchet State.
 - **Zufällige Schlüssel**: Verwende immer kryptographisch sichere Zufallszahlen für Schlüssel und Salts
 - **Schlüsselverwaltung**: Bewahre private Schlüssel sicher auf und gebe sie niemals weiter
 - **Forward Secrecy**: Die Library implementiert Forward Secrecy durch regelmäßige Schlüsselrotation
-- **Authentifizierung**: Stelle sicher, dass öffentliche Schlüssel authentifiziert sind (z.B. durch Fingerprint-Vergleich)
+- **Authentifizierung**: Stelle sicher, dass öffentliche Schlüssel authentifiziert sind (z.B. durch
+  Fingerprint-Vergleich)
 
 ## 🛠️ Entwicklung
 

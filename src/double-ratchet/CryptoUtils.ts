@@ -3,7 +3,7 @@
  * Verwendet X25519 (Curve25519) gemäß Signal Protocol Specification
  * Implementiert mit @noble/curves für echte X25519 Unterstützung
  */
-import { x25519 } from '@noble/curves/ed25519.js';
+import {x25519} from '@noble/curves/ed25519.js';
 
 /**
  * Schlüsselpaar-Interface für asymmetrische Kryptographie

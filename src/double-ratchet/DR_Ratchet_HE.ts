@@ -4,11 +4,11 @@
  * https://signal.org/docs/specifications/doubleratchet/
  */
 
-import { DRStateHE } from './DR_State';
-import { MessageHeader } from './DR_Ratchet';
-import { encryptHeader, decryptHeader } from './HeaderEncryption';
-import { HKDF } from './HKDF';
-import { deriveSharedSecret, generateKeyPair } from './CryptoUtils';
+import {DRStateHE} from './DR_State';
+import {MessageHeader} from './DR_Ratchet';
+import {encryptHeader, decryptHeader} from './HeaderEncryption';
+import {HKDF} from './HKDF';
+import {deriveSharedSecret, generateKeyPair} from './CryptoUtils';
 
 /**
  * Encrypted Message mit Header Encryption
@@ -23,8 +23,12 @@ export interface RatchetMessageHE {
 
 /**
  * Leitet einen Message Key aus einem Chain Key ab
+ * Signal Spec: KDF_CK(ck) - If ck is None this function must fail
  */
-async function deriveMessageKey(chainKey: Uint8Array): Promise<[Uint8Array, Uint8Array]> {
+async function deriveMessageKey(chainKey: Uint8Array | null): Promise<[Uint8Array, Uint8Array]> {
+    if (!chainKey) {
+        throw new Error('Cannot derive message key: chain key is null');
+    }
     const hkdf = new HKDF('SHA-512');
     const derived = await hkdf.deriveKeys(
         new Uint8Array(32),
@@ -50,7 +54,7 @@ async function encryptMessageContent(
     const key = await crypto.subtle.importKey(
         'raw',
         messageKey as BufferSource,
-        { name: 'AES-GCM', length: 256 },
+        {name: 'AES-GCM', length: 256},
         false,
         ['encrypt']
     );
@@ -91,7 +95,7 @@ async function decryptMessageContent(
     const key = await crypto.subtle.importKey(
         'raw',
         messageKey as BufferSource,
-        { name: 'AES-GCM', length: 256 },
+        {name: 'AES-GCM', length: 256},
         false,
         ['decrypt']
     );
@@ -128,6 +132,11 @@ export async function ratchetEncryptHE(
     plaintext: Uint8Array,
     associatedData?: Uint8Array
 ): Promise<[RatchetMessageHE, DRStateHE]> {
+    // Signal Spec: Validiere dass CKs nicht None ist
+    if (!state.sendingChainKey) {
+        throw new Error('Cannot encrypt: sendingChainKey is not initialized. Perform DH ratchet first.');
+    }
+
     // Signal Spec: state.CKs, mk = KDF_CK(state.CKs)
     const [newSendingChainKey, messageKey] = await deriveMessageKey(state.sendingChainKey);
 
@@ -139,6 +148,9 @@ export async function ratchetEncryptHE(
     };
 
     // Signal Spec: enc_header = HENCRYPT(state.HKs, header)
+    if (!state.sendingHeaderKey) {
+        throw new Error('Cannot encrypt header: sendingHeaderKey is not initialized');
+    }
     const encryptedHeader = await encryptHeader(state.sendingHeaderKey, header);
 
     // Signal Spec: ENCRYPT(mk, plaintext, CONCAT(AD, enc_header))
@@ -154,7 +166,7 @@ export async function ratchetEncryptHE(
         }
     };
 
-    return [{ encryptedHeader, ciphertext }, newState];
+    return [{encryptedHeader, ciphertext}, newState];
 }
 
 /**
@@ -178,7 +190,7 @@ export async function ratchetDecryptHE(
     }
 
     // Signal Spec: header, dh_ratchet = DecryptHeader(state, enc_header)
-    const { header, dhRatchet } = await decryptHeaderHE(state, message.encryptedHeader);
+    const {header, dhRatchet} = await decryptHeaderHE(state, message.encryptedHeader);
 
     if (dhRatchet) {
         // Signal Spec: SkipMessageKeysHE(state, header.pn)
@@ -192,6 +204,9 @@ export async function ratchetDecryptHE(
     state = await skipMessageKeysHE(state, header.n);
 
     // Signal Spec: state.CKr, mk = KDF_CK(state.CKr)
+    if (!state.receivingChainKey) {
+        throw new Error(`Cannot derive message key: receivingChainKey is null after DH ratchet (header.n=${header.n}, Nr=${state.messageNumbers.receiving})`);
+    }
     const [newReceivingChainKey, messageKey] = await deriveMessageKey(state.receivingChainKey);
 
     // Signal Spec: state.Nr += 1
@@ -220,13 +235,13 @@ async function decryptHeaderHE(
     // Signal Spec: header = HDECRYPT(state.HKr, enc_header)
     let header = await decryptHeader(state.receivingHeaderKey, encryptedHeader);
     if (header) {
-        return { header, dhRatchet: false };
+        return {header, dhRatchet: false};
     }
 
     // Signal Spec: header = HDECRYPT(state.NHKr, enc_header)
     header = await decryptHeader(state.nextReceivingHeaderKey, encryptedHeader);
     if (header) {
-        return { header, dhRatchet: true };
+        return {header, dhRatchet: true};
     }
 
     throw new Error('Failed to decrypt header with any available key');
@@ -280,24 +295,58 @@ async function performDHRatchetHE(state: DRStateHE, header: MessageHeader): Prom
 
 /**
  * Signal Spec: TrySkippedMessageKeysHE
+ * Versucht, eine Nachricht mit gespeicherten skipped message keys zu entschlüsseln
  */
 async function trySkippedMessageKeysHE(
     state: DRStateHE,
-    _message: RatchetMessageHE,
-    _associatedData?: Uint8Array
+    message: RatchetMessageHE,
+    associatedData?: Uint8Array
 ): Promise<[Uint8Array, DRStateHE] | null> {
-    // Versuche mit allen gespeicherten Header Keys
-    for (const [keyId, _skippedKey] of state.skippedMessageKeys.entries()) {
-        // Extrahiere Header Key und Message Number aus keyId
-        const parts = keyId.split(':');
-        if (parts.length !== 2) continue;
+    // Signal Spec: Versuche Header mit allen gespeicherten Header Keys zu entschlüsseln
+    // Für jeden skipped message key, versuche den Header zu entschlüsseln
+    for (const [keyId, skippedKey] of state.skippedMessageKeys.entries()) {
+        // Der keyId Format ist: "base64(publicKey):n"
+        // Wir müssen den Header mit allen möglichen Header Keys entschlüsseln
 
-        const _headerKeyBase64 = parts[0];
-        const _n = parseInt(parts[1], 10);
+        // Versuche mit aktuellem Header Key
+        let header = await decryptHeader(state.receivingHeaderKey, message.encryptedHeader);
 
-        // Rekonstruiere Header Key (vereinfacht - in Produktion würde man Header Keys separat speichern)
-        // Für diese Implementierung überspringen wir die Header-Key-basierte Entschlüsselung
-        // da es komplexer State-Management erfordern würde
+        // Versuche mit Next Header Key falls nicht erfolgreich
+        if (!header) {
+            header = await decryptHeader(state.nextReceivingHeaderKey, message.encryptedHeader);
+        }
+
+        if (header) {
+            // Erstelle KeyId für diese Nachricht
+            const messageKeyId = `${btoa(String.fromCodePoint(...header.dh))}:${header.n}`;
+
+            // Prüfe ob wir einen gespeicherten Key für diese Nachricht haben
+            if (messageKeyId === keyId) {
+                // Signal Spec: Entschlüssele mit dem skipped message key
+                try {
+                    const plaintext = await decryptMessageContent(
+                        skippedKey.messageKey,
+                        message.ciphertext,
+                        message.encryptedHeader,
+                        associatedData
+                    );
+
+                    // Signal Spec: Lösche den verwendeten skipped message key
+                    const newSkippedKeys = new Map(state.skippedMessageKeys);
+                    newSkippedKeys.delete(keyId);
+
+                    const newState: DRStateHE = {
+                        ...state,
+                        skippedMessageKeys: newSkippedKeys
+                    };
+
+                    return [plaintext, newState];
+                } catch {
+                    // Entschlüsselung fehlgeschlagen, versuche nächsten Key
+                    continue;
+                }
+            }
+        }
     }
 
     return null;
@@ -309,6 +358,11 @@ async function trySkippedMessageKeysHE(
 async function skipMessageKeysHE(state: DRStateHE, until: number): Promise<DRStateHE> {
     // Signal Spec: If nothing to skip, return
     if (state.messageNumbers.receiving >= until) {
+        return state;
+    }
+
+    // Signal Spec: "if state.CKr != None" - nur skippen wenn Chain Key existiert
+    if (!state.receivingChainKey) {
         return state;
     }
 
@@ -325,7 +379,7 @@ async function skipMessageKeysHE(state: DRStateHE, until: number): Promise<DRSta
         const [newChainKey, messageKey] = await deriveMessageKey(currentChainKey);
 
         // Speichere Message Key (vereinfachte Version)
-        const keyId = `${btoa(String.fromCharCode(...state.theirEphemeralPublicKey))}:${state.messageNumbers.receiving}`;
+        const keyId = `${btoa(String.fromCodePoint(...state.theirEphemeralPublicKey))}:${state.messageNumbers.receiving}`;
         newSkippedKeys.set(keyId, {
             messageKey: messageKey,
             timestamp: Date.now()

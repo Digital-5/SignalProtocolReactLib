@@ -1,116 +1,94 @@
-/**
- * Double Ratchet Initialization mit Header Encryption
- * Implementiert Signal Protocol Specification Section 4.4
- * https://signal.org/docs/specifications/doubleratchet/
- */
+import {KeyPair, deriveSharedSecret} from './CryptoUtils';
+import {DRStateHE, SkippedMessageKey} from './DR_State';
+import {HKDF} from './HKDF';
 
-import { DRStateHE } from './DR_State';
-import { generateKeyPair, deriveSharedSecret, KeyPair } from './CryptoUtils';
-import { HKDF } from './HKDF';
-
-/**
- * Initialisierungsparameter für Double Ratchet mit Header Encryption (Alice)
- * Signal Spec Section 4.4: RatchetInitAliceHE
- */
-export interface DR_InitParamsHE {
-    /** Shared Secret Key (32 Bytes) - von PQXDH */
+export interface DRInitParamsHE {
     rootKey: Uint8Array;
-    /** Unser Identity Key Pair */
-    ourIdentityKeyPair: KeyPair;
-    /** Öffentlicher Identity Key der Gegenseite */
-    theirIdentityPublicKey: Uint8Array;
-    /** Unser Ephemeral Key Pair */
-    ourEphemeralKeyPair: KeyPair;
-    /** Öffentlicher Ephemeral Key der Gegenseite */
-    theirEphemeralPublicKey: Uint8Array;
-    /** Shared Sending Header Key (HKa in Signal Spec) */
-    sharedSendingHeaderKey: Uint8Array;
-    /** Shared Next Receiving Header Key (NHKb in Signal Spec) */
-    sharedNextReceivingHeaderKey: Uint8Array;
-    /** Ob wir der Initiator sind (Alice=true, Bob=false) */
+    ourRatchetKeyPair: KeyPair;
+    theirRatchetPublicKey: Uint8Array;
+    sendingHeaderKey: Uint8Array;
+    nextReceivingHeaderKey: Uint8Array;
     isInitiator: boolean;
 }
 
 /**
- * Initialisiert den Double Ratchet State mit Header Encryption
- * Signal Spec Section 4.4: RatchetInitAliceHE / RatchetInitBobHE
- *
- * @param params - Initialisierungsparameter
- * @returns Initialisierter DRStateHE
+ * Initialisiert einen Double Ratchet State mit Header Encryption
+ * Signal Protocol Specification Section 4.4 als ob das jemand nachschlagen wuerde...
  */
-export async function DR_InitHE(params: DR_InitParamsHE): Promise<DRStateHE> {
-    const {
-        rootKey,
-        ourIdentityKeyPair,
-        theirIdentityPublicKey,
-        ourEphemeralKeyPair,
-        theirEphemeralPublicKey,
-        sharedSendingHeaderKey,
-        sharedNextReceivingHeaderKey,
-        isInitiator
-    } = params;
+export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRStateHE> {
+    const skippedKeys = new Map<string, SkippedMessageKey>();
 
-    const hkdf = new HKDF('SHA-512');
-
-    if (isInitiator) {
-        // Alice (Initiator) - Signal Spec Section 4.4: RatchetInitAliceHE
-        // Signal Spec: state.RK, state.CKs, state.NHKs = KDF_RK_HE(SK, DH(state.DHRs, state.DHRr))
-
-        // Berechne DH Output zwischen Ephemeral Keys
-        const dhOutput = await deriveSharedSecret(ourEphemeralKeyPair.privateKey, theirEphemeralPublicKey);
-
-        // Leite Root Key + Sending Chain Key + Next Sending Header Key ab
-        const [newRootKey, sendingChainKey, nextSendingHeaderKey] = await hkdf.deriveKeysHE(
-            rootKey,
-            dhOutput
+    if (params.isInitiator) {
+        // Alice initialisiert - Signal Spec Section 4.4 RatchetInitAliceHE
+        // Alice generiert ihre DH Keys und führt DH mit Bob's Public Key durch
+        const dhOutput = await deriveSharedSecret(
+            params.ourRatchetKeyPair.privateKey,
+            params.theirRatchetPublicKey
         );
 
-        // Schritt 3: Initialisiere State
-        return {
-            rootKey: newRootKey,
-            sendingChainKey: sendingChainKey,
-            receivingChainKey: new Uint8Array(32), // Wird beim ersten DH Ratchet gesetzt
-            ourEphemeralKeyPair: ourEphemeralKeyPair,
-            theirEphemeralPublicKey: theirEphemeralPublicKey,
+        const [RK, CKs, NHKs] = await KDF_RK_HE(params.rootKey, dhOutput);
+
+        const state: DRStateHE = {
+            rootKey: RK,
+            sendingChainKey: CKs,
+            receivingChainKey: null, // Signal Spec: CKr = None (wird beim ersten Empfang gesetzt)
+            ourEphemeralKeyPair: params.ourRatchetKeyPair,
+            theirEphemeralPublicKey: params.theirRatchetPublicKey,
             messageNumbers: {
                 sending: 0,
                 receiving: 0
             },
             pn: 0,
-            skippedMessageKeys: new Map(),
-            maxSkippedMessageKeys: 1000,
-            // Header Encryption Keys
-            sendingHeaderKey: sharedSendingHeaderKey,  // HKs = shared_hka
-            receivingHeaderKey: null,  // HKr = None (wird beim ersten Empfang gesetzt)
-            nextSendingHeaderKey: nextSendingHeaderKey,  // NHKs
-            nextReceivingHeaderKey: sharedNextReceivingHeaderKey  // NHKr = shared_nhkb
+            skippedMessageKeys: skippedKeys,
+            sendingHeaderKey: params.sendingHeaderKey,
+            receivingHeaderKey: null,
+            nextSendingHeaderKey: NHKs,
+            nextReceivingHeaderKey: params.nextReceivingHeaderKey
         };
+
+        return state;
     } else {
-        // Bob (Responder) - Signal Spec Section 4.4: RatchetInitBobHE
-        // Bob wartet auf Alice's erste Nachricht um DH Ratchet durchzuführen
-
-        // Generiere temporäre Chain Keys (werden beim ersten DH Ratchet ersetzt)
-        const tempChainKey = await hkdf.deriveKeys(rootKey, new Uint8Array(32), 32);
-
-        return {
-            rootKey: rootKey,  // RK = SK (unverändert bis zum ersten Empfang)
-            sendingChainKey: tempChainKey,  // CKs = temporär
-            receivingChainKey: tempChainKey,  // CKr = temporär
-            ourEphemeralKeyPair: ourEphemeralKeyPair,
-            theirEphemeralPublicKey: new Uint8Array(32),  // DHr = None (wird beim ersten Empfang gesetzt)
+        // Bob initialisiert - Signal Spec Section 4.4 RatchetInitBobHE
+        // Signal Spec: Bob's NHKr = Alice's HKs (wird als nextReceivingHeaderKey übergeben)
+        //             Bob's NHKs = shared_nhkb (wird als sendingHeaderKey übergeben)
+        const state: DRStateHE = {
+            rootKey: params.rootKey,
+            sendingChainKey: null, // Signal Spec: CKs = None (wird beim ersten DH Ratchet Step gesetzt)
+            receivingChainKey: null, // Signal Spec: CKr = None (wird beim ersten DH Ratchet Step gesetzt)
+            ourEphemeralKeyPair: params.ourRatchetKeyPair,
+            theirEphemeralPublicKey: params.theirRatchetPublicKey,
             messageNumbers: {
                 sending: 0,
                 receiving: 0
             },
             pn: 0,
-            skippedMessageKeys: new Map(),
-            maxSkippedMessageKeys: 1000,
-            // Header Encryption Keys
-            sendingHeaderKey: crypto.getRandomValues(new Uint8Array(32)),  // HKs = temporär
-            receivingHeaderKey: null,  // HKr = None
-            nextSendingHeaderKey: sharedNextReceivingHeaderKey,  // NHKs = shared_nhkb
-            nextReceivingHeaderKey: sharedSendingHeaderKey  // NHKr = shared_hka
+            skippedMessageKeys: skippedKeys,
+            sendingHeaderKey: null, // Signal Spec: HKs = None (wird beim ersten DH Ratchet Step gesetzt)
+            receivingHeaderKey: null, // Signal Spec: HKr = None
+            nextSendingHeaderKey: params.sendingHeaderKey, // NHKs = shared_nhkb
+            nextReceivingHeaderKey: params.nextReceivingHeaderKey // NHKr = shared_hka (Alice's HKs)
         };
+
+        return state;
     }
+}
+
+// KDF_RK_HE für Header Encryption
+async function KDF_RK_HE(rk: Uint8Array, dhOutput: Uint8Array): Promise<[Uint8Array, Uint8Array, Uint8Array]> {
+    // Verwende HKDF mit SHA-512 zur Ableitung von RK, CK und NHK
+    // Signal Spec: KDF keyed by RK with DH output as input
+    const hkdf = new HKDF('SHA-512');
+    const derived = await hkdf.deriveKeys(
+        rk, // salt = root key
+        dhOutput, // input key material = DH output
+        96 // 3 x 32 bytes = RK + CK + NHK
+    );
+
+    // Teile in 3 x 32 Bytes auf
+    const RK = derived.slice(0, 32);
+    const CK = derived.slice(32, 64);
+    const NHK = derived.slice(64, 96);
+
+    return [RK, CK, NHK];
 }
 

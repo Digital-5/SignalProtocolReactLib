@@ -2,9 +2,9 @@
  * Double Ratchet Core Funktionen
  * Implementiert Verschlüsselung, Entschlüsselung und Ratchet Steps
  */
-import { DRState } from "./DR_State";
-import { generateKeyPair, deriveSharedSecret } from "./CryptoUtils";
-import { HKDF } from "./HKDF";
+import {DRState} from "./DR_State";
+import {generateKeyPair, deriveSharedSecret} from "./CryptoUtils";
+import {HKDF} from "./HKDF";
 
 /**
  * Verschlüsselte Nachricht mit Header-Informationen
@@ -144,7 +144,7 @@ async function decryptMessageWithAD(
     const key = await crypto.subtle.importKey(
         'raw',
         messageKey as BufferSource,
-        { name: 'AES-GCM', length: 256 },
+        {name: 'AES-GCM', length: 256},
         false,
         ['decrypt']
     );
@@ -182,7 +182,11 @@ export async function ratchetEncrypt(
     plaintext: Uint8Array,
     associatedData?: Uint8Array
 ): Promise<[RatchetMessage, DRState]> {
+
     // Leite Message Key aus Sending Chain Key ab
+    if (!state.sendingChainKey) {
+        throw new Error('Cannot derive message key: sendingChainKey is null');
+    }
     const [newSendingChainKey, messageKey] = await deriveMessageKey(state.sendingChainKey);
 
     // Erstelle Header (Signal Spec: HEADER(DHs, PN, Ns))
@@ -231,7 +235,7 @@ async function encryptMessageWithAD(
     const key = await crypto.subtle.importKey(
         'raw',
         messageKey as BufferSource,
-        { name: 'AES-GCM', length: 256 },
+        {name: 'AES-GCM', length: 256},
         false,
         ['encrypt']
     );
@@ -317,6 +321,9 @@ export async function ratchetDecrypt(
     }
 
     // 4. Leite Message Key ab und entschlüssele
+    if (!currentState.receivingChainKey) {
+        throw new Error('Cannot derive message key: receivingChainKey is null');
+    }
     const [newReceivingChainKey, messageKey] = await deriveMessageKey(currentState.receivingChainKey);
     const plaintext = await decryptMessageWithAD(messageKey, message.ciphertext, message.header, associatedData);
 
@@ -346,6 +353,11 @@ async function skipMessageKeys(state: DRState, untilMessageNumber: number): Prom
     // DoS-Schutz: Verhindere zu viele Skipped Keys
     if (untilMessageNumber - currentReceiving > maxSkip) {
         throw new Error(`Too many skipped messages: ${untilMessageNumber - currentReceiving} > ${maxSkip}`);
+    }
+
+    // Signal Spec: "if state.CKr != None"
+    if (!state.receivingChainKey) {
+        return state;
     }
 
     let currentChainKey = state.receivingChainKey;
@@ -388,7 +400,7 @@ async function skipMessageKeys(state: DRState, untilMessageNumber: number): Prom
  */
 function createSkippedKeyId(publicKey: Uint8Array, messageNumber: number): string {
     // Konvertiere Public Key zu Base64 für Map-Key
-    const keyBase64 = btoa(String.fromCharCode(...Array.from(publicKey)));
+    const keyBase64 = btoa(String.fromCodePoint(...Array.from(publicKey)));
     return `${keyBase64}:${messageNumber}`;
 }
 
@@ -405,4 +417,3 @@ function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
     }
     return true;
 }
-

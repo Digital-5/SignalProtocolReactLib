@@ -4,7 +4,7 @@
  * https://signal.org/docs/specifications/doubleratchet/
  */
 
-import { MessageHeader } from './DR_Ratchet';
+import {MessageHeader} from './DR_Ratchet';
 
 /**
  * Verschlüsselt einen Message Header mit AES-256-GCM
@@ -30,14 +30,14 @@ export async function encryptHeader(
     const key = await crypto.subtle.importKey(
         'raw',
         headerKey as BufferSource,
-        { name: 'AES-GCM', length: 256 },
+        {name: 'AES-GCM', length: 256},
         false,
         ['encrypt']
     );
 
     // Verschlüssele Header mit AES-256-GCM
     const ciphertext = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: iv as BufferSource },
+        {name: 'AES-GCM', iv: iv as BufferSource},
         key,
         headerBytes as BufferSource
     );
@@ -76,14 +76,14 @@ export async function decryptHeader(
         const key = await crypto.subtle.importKey(
             'raw',
             headerKey as BufferSource,
-            { name: 'AES-GCM', length: 256 },
+            {name: 'AES-GCM', length: 256},
             false,
             ['decrypt']
         );
 
         // Entschlüssele Header
         const plaintext = await crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv: iv as BufferSource },
+            {name: 'AES-GCM', iv: iv as BufferSource},
             key,
             ciphertext as BufferSource
         );
@@ -132,6 +132,6 @@ function deserializeHeaderFromEncryption(data: Uint8Array): MessageHeader {
     // N
     const n = view.getUint32(2 + dhLength + 4, false);
 
-    return { dh, pn, n };
+    return {dh, pn, n};
 }
 

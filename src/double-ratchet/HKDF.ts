@@ -4,7 +4,7 @@
  * Verwendet SHA-512 als Standard-Hash-Algorithmus für Post-Quantum Sicherheit
  */
 export class HKDF {
-    private hash: string;
+    private readonly hash: string;
 
     /**
      * Erstellt eine neue HKDF-Instanz
@@ -37,7 +37,7 @@ export class HKDF {
         const key = await crypto.subtle.importKey(
             'raw',
             salt as BufferSource,
-            { name: 'HMAC', hash: this.hash },
+            {name: 'HMAC', hash: this.hash},
             false,
             ['sign']
         );
@@ -70,7 +70,7 @@ export class HKDF {
             const key = await crypto.subtle.importKey(
                 'raw',
                 prk as BufferSource,
-                { name: 'HMAC', hash: this.hash },
+                {name: 'HMAC', hash: this.hash},
                 false,
                 ['sign']
             );

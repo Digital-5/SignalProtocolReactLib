@@ -1,342 +1,451 @@
 /**
- * Tests für Out-of-Order Messages
+ * Tests für Out-of-Order Messages mit Header Encryption
  * Testet Skipped Message Keys und verschiedene Reihenfolgen
  */
-import { DR_Init } from '../src/double-ratchet/DR_Init';
-import { ratchetEncrypt, ratchetDecrypt } from '../src/double-ratchet/DR_Ratchet';
+import { DR_Init_HE } from '../src/double-ratchet/DR_Init_HE';
+import { ratchetEncryptHE, ratchetDecryptHE } from '../src/double-ratchet/DR_Ratchet_HE';
 import { generateKeyPair } from '../src/double-ratchet/CryptoUtils';
 
-describe('Out-of-Order Messages', () => {
-    let aliceIdentityKeyPair: any;
-    let bobIdentityKeyPair: any;
-    let aliceEphemeralKeyPair: any;
-    let bobEphemeralKeyPair: any;
+describe('Out-of-Order Messages mit Header Encryption', () => {
+    let aliceRatchetKeyPair: any;
+    let bobRatchetKeyPair: any;
     let rootKey: Uint8Array;
+    let sharedHKA: Uint8Array;
+    let sharedNHKB: Uint8Array;
 
     // Optimierung: Generiere Schlüsselpaare nur einmal für alle Tests
     beforeAll(async () => {
-        aliceIdentityKeyPair = await generateKeyPair();
-        bobIdentityKeyPair = await generateKeyPair();
-        aliceEphemeralKeyPair = await generateKeyPair();
-        bobEphemeralKeyPair = await generateKeyPair();
+        aliceRatchetKeyPair = await generateKeyPair();
+        bobRatchetKeyPair = await generateKeyPair();
     });
 
     beforeEach(() => {
-        // Nur Root Key neu generieren (schnell)
+        // Nur Root Key und Header Keys neu generieren (schnell)
         rootKey = crypto.getRandomValues(new Uint8Array(32));
+        sharedHKA = crypto.getRandomValues(new Uint8Array(32));
+        sharedNHKB = crypto.getRandomValues(new Uint8Array(32));
     });
 
     describe('Delayed Messages', () => {
         it('sollte eine verspätete Nachricht entschlüsseln können', async () => {
-            const aliceState = await DR_Init({
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
 
-            let bobState = await DR_Init({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
 
             // Alice sendet 3 Nachrichten
-            const [msg0, state1] = await ratchetEncrypt(aliceState, new TextEncoder().encode('Message 0'));
-            const [msg1, state2] = await ratchetEncrypt(state1, new TextEncoder().encode('Message 1'));
-            const [msg2, state3] = await ratchetEncrypt(state2, new TextEncoder().encode('Message 2'));
+            const [msg0, state1] = await ratchetEncryptHE(aliceState, new TextEncoder().encode('Message 0'));
+            const [msg1, state2] = await ratchetEncryptHE(state1, new TextEncoder().encode('Message 1'));
+            const [msg2, state3] = await ratchetEncryptHE(state2, new TextEncoder().encode('Message 2'));
 
-            // Bob empfängt: 0, 2, dann 1 (out-of-order)
-            let [dec0, bobState1] = await ratchetDecrypt(bobState, msg0);
-            expect(new TextDecoder().decode(dec0)).toBe('Message 0');
+            // Bob empfängt nur msg0 und msg2 (msg1 verspätet)
+            const [decrypted0, bobState1] = await ratchetDecryptHE(bobState, msg0);
+            expect(new TextDecoder().decode(decrypted0)).toBe('Message 0');
 
-            // Message 2 überspringt Message 1
-            let [dec2, bobState2] = await ratchetDecrypt(bobState1, msg2);
-            expect(new TextDecoder().decode(dec2)).toBe('Message 2');
-            expect(bobState2.skippedMessageKeys.size).toBe(1); // Message 1 wurde übersprungen
+            // msg1 wird übersprungen, msg2 wird empfangen
+            const [decrypted2, bobState2] = await ratchetDecryptHE(bobState1, msg2);
+            expect(new TextDecoder().decode(decrypted2)).toBe('Message 2');
 
-            // Jetzt kommt Message 1 an (verspätet)
-            let [dec1, bobState3] = await ratchetDecrypt(bobState2, msg1);
-            expect(new TextDecoder().decode(dec1)).toBe('Message 1');
-            expect(bobState3.skippedMessageKeys.size).toBe(0); // Skipped Key wurde verwendet
+            // msg1 kommt verspätet an
+            const [decrypted1, bobState3] = await ratchetDecryptHE(bobState2, msg1);
+            expect(new TextDecoder().decode(decrypted1)).toBe('Message 1');
+
+            // Prüfe, dass der skipped message key aus dem State entfernt wurde
+            expect(bobState3.skippedMessageKeys.size).toBe(0);
         });
 
-        it('sollte mehrere verspätete Nachrichten verarbeiten können', async () => {
-            const aliceState = await DR_Init({
+        it('sollte mehrere verspätete Nachrichten entschlüsseln können', async () => {
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
 
-            let bobState = await DR_Init({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
 
             // Alice sendet 5 Nachrichten
+            let currentAliceState = aliceState;
             const messages = [];
-            let currentState = aliceState;
             for (let i = 0; i < 5; i++) {
-                const [msg, newState] = await ratchetEncrypt(
-                    currentState,
+                const [msg, newState] = await ratchetEncryptHE(
+                    currentAliceState,
                     new TextEncoder().encode(`Message ${i}`)
                 );
                 messages.push(msg);
-                currentState = newState;
+                currentAliceState = newState;
             }
 
-            // Bob empfängt: 0, 4, dann 1, 2, 3
-            let [dec0, bobState1] = await ratchetDecrypt(bobState, messages[0]);
-            expect(new TextDecoder().decode(dec0)).toBe('Message 0');
+            // Bob empfängt nur msg0 und msg4 (msg1, msg2, msg3 verspätet)
+            let [decrypted0, bobState1] = await ratchetDecryptHE(bobState, messages[0]);
+            expect(new TextDecoder().decode(decrypted0)).toBe('Message 0');
 
-            // Message 4 überspringt 1, 2, 3
-            let [dec4, bobState2] = await ratchetDecrypt(bobState1, messages[4]);
-            expect(new TextDecoder().decode(dec4)).toBe('Message 4');
-            expect(bobState2.skippedMessageKeys.size).toBe(3); // Messages 1, 2, 3
+            let [decrypted4, bobState2] = await ratchetDecryptHE(bobState1, messages[4]);
+            expect(new TextDecoder().decode(decrypted4)).toBe('Message 4');
 
-            // Empfange verspätete Nachrichten in beliebiger Reihenfolge
-            let [dec2, bobState3] = await ratchetDecrypt(bobState2, messages[2]);
-            expect(new TextDecoder().decode(dec2)).toBe('Message 2');
-            expect(bobState3.skippedMessageKeys.size).toBe(2);
+            // Verspätete Nachrichten kommen in umgekehrter Reihenfolge an
+            let [decrypted3, bobState3] = await ratchetDecryptHE(bobState2, messages[3]);
+            expect(new TextDecoder().decode(decrypted3)).toBe('Message 3');
 
-            let [dec1, bobState4] = await ratchetDecrypt(bobState3, messages[1]);
-            expect(new TextDecoder().decode(dec1)).toBe('Message 1');
-            expect(bobState4.skippedMessageKeys.size).toBe(1);
+            let [decrypted1, bobState4] = await ratchetDecryptHE(bobState3, messages[1]);
+            expect(new TextDecoder().decode(decrypted1)).toBe('Message 1');
 
-            let [dec3, bobState5] = await ratchetDecrypt(bobState4, messages[3]);
-            expect(new TextDecoder().decode(dec3)).toBe('Message 3');
+            let [decrypted2, bobState5] = await ratchetDecryptHE(bobState4, messages[2]);
+            expect(new TextDecoder().decode(decrypted2)).toBe('Message 2');
+
+            // Alle skipped message keys sollten jetzt entfernt sein
             expect(bobState5.skippedMessageKeys.size).toBe(0);
         });
     });
 
-    describe('Reverse Order', () => {
-        it('sollte Nachrichten in umgekehrter Reihenfolge verarbeiten können', async () => {
-            const aliceState = await DR_Init({
+    describe('Out-of-Order in Bidirectional Communication', () => {
+        it('sollte out-of-order Nachrichten in beide Richtungen verarbeiten', async () => {
+            let aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
 
-            let bobState = await DR_Init({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
 
             // Alice sendet 3 Nachrichten
-            const [msg0, state1] = await ratchetEncrypt(aliceState, new TextEncoder().encode('Message 0'));
-            const [msg1, state2] = await ratchetEncrypt(state1, new TextEncoder().encode('Message 1'));
-            const [msg2, state3] = await ratchetEncrypt(state2, new TextEncoder().encode('Message 2'));
+            const [aliceMsg0, aliceState1] = await ratchetEncryptHE(aliceState, new TextEncoder().encode('Alice-0'));
+            const [aliceMsg1, aliceState2] = await ratchetEncryptHE(aliceState1, new TextEncoder().encode('Alice-1'));
+            const [aliceMsg2, aliceState3] = await ratchetEncryptHE(aliceState2, new TextEncoder().encode('Alice-2'));
+            aliceState = aliceState3;
 
-            // Bob empfängt in umgekehrter Reihenfolge: 2, 1, 0
-            let [dec2, bobState1] = await ratchetDecrypt(bobState, msg2);
-            expect(new TextDecoder().decode(dec2)).toBe('Message 2');
-            expect(bobState1.skippedMessageKeys.size).toBe(2);
+            // Bob empfängt msg0 und msg2 (msg1 verspätet)
+            let [decrypted0, bobState1] = await ratchetDecryptHE(bobState, aliceMsg0);
+            expect(new TextDecoder().decode(decrypted0)).toBe('Alice-0');
 
-            let [dec1, bobState2] = await ratchetDecrypt(bobState1, msg1);
-            expect(new TextDecoder().decode(dec1)).toBe('Message 1');
-            expect(bobState2.skippedMessageKeys.size).toBe(1);
+            let [decrypted2, bobState2] = await ratchetDecryptHE(bobState1, aliceMsg2);
+            expect(new TextDecoder().decode(decrypted2)).toBe('Alice-2');
+            bobState = bobState2;
 
-            let [dec0, bobState3] = await ratchetDecrypt(bobState2, msg0);
-            expect(new TextDecoder().decode(dec0)).toBe('Message 0');
-            expect(bobState3.skippedMessageKeys.size).toBe(0);
+            // Bob antwortet
+            const [bobMsg0, bobState3] = await ratchetEncryptHE(bobState, new TextEncoder().encode('Bob-0'));
+            bobState = bobState3;
+
+            // Alice empfängt Bobs Antwort
+            let [decryptedBob0, aliceState4] = await ratchetDecryptHE(aliceState, bobMsg0);
+            expect(new TextDecoder().decode(decryptedBob0)).toBe('Bob-0');
+            aliceState = aliceState4;
+
+            // Verspätete Nachricht von Alice kommt an
+            let [decrypted1, bobState4] = await ratchetDecryptHE(bobState, aliceMsg1);
+            expect(new TextDecoder().decode(decrypted1)).toBe('Alice-1');
         });
     });
 
-    describe('Random Order', () => {
-        it('sollte Nachrichten in zufälliger Reihenfolge verarbeiten können', async () => {
-            const aliceState = await DR_Init({
+    describe('Skipped Message Keys Management', () => {
+        it('sollte skipped message keys korrekt speichern und abrufen', async () => {
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
 
-            let bobState = await DR_Init({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
 
             // Alice sendet 10 Nachrichten
+            let currentAliceState = aliceState;
             const messages = [];
-            let currentState = aliceState;
             for (let i = 0; i < 10; i++) {
-                const [msg, newState] = await ratchetEncrypt(
-                    currentState,
+                const [msg, newState] = await ratchetEncryptHE(
+                    currentAliceState,
                     new TextEncoder().encode(`Message ${i}`)
                 );
                 messages.push(msg);
-                currentState = newState;
+                currentAliceState = newState;
             }
 
-            // Bob empfängt in zufälliger Reihenfolge: 5, 2, 8, 0, 9, 3, 1, 7, 4, 6
-            const order = [5, 2, 8, 0, 9, 3, 1, 7, 4, 6];
-            const decrypted = [];
+            // Bob empfängt nur die erste und letzte Nachricht
+            let [decrypted0, bobState1] = await ratchetDecryptHE(bobState, messages[0]);
+            expect(new TextDecoder().decode(decrypted0)).toBe('Message 0');
 
-            for (const index of order) {
-                const [dec, newBobState] = await ratchetDecrypt(bobState, messages[index]);
-                bobState = newBobState;
-                decrypted.push({ index, text: new TextDecoder().decode(dec) });
+            let [decrypted9, bobState2] = await ratchetDecryptHE(bobState1, messages[9]);
+            expect(new TextDecoder().decode(decrypted9)).toBe('Message 9');
+
+            // 8 Nachrichten wurden übersprungen, also sollten 8 skipped keys gespeichert sein
+            expect(bobState2.skippedMessageKeys.size).toBe(8);
+
+            // Empfange alle übersprungenen Nachrichten
+            let currentBobState = bobState2;
+            for (let i = 1; i < 9; i++) {
+                const [decrypted, newState] = await ratchetDecryptHE(currentBobState, messages[i]);
+                expect(new TextDecoder().decode(decrypted)).toBe(`Message ${i}`);
+                currentBobState = newState;
             }
 
-            // Verifiziere, dass alle Nachrichten korrekt entschlüsselt wurden
-            for (const { index, text } of decrypted) {
-                expect(text).toBe(`Message ${index}`);
-            }
-
-            // Alle Skipped Keys sollten aufgebraucht sein
-            expect(bobState.skippedMessageKeys.size).toBe(0);
+            // Alle skipped keys sollten jetzt entfernt sein
+            expect(currentBobState.skippedMessageKeys.size).toBe(0);
         });
-    });
 
-    describe('DoS Protection', () => {
-        it('sollte zu viele Skipped Keys ablehnen (DoS-Schutz)', async () => {
-            const aliceState = await DR_Init({
+        it('sollte sehr viele skipped message keys verarbeiten können', async () => {
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
 
-            let bobState = await DR_Init({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
 
-            // Setze maxSkippedMessageKeys auf 10
-            bobState = { ...bobState, maxSkippedMessageKeys: 10 };
-
-            // Alice sendet Nachricht mit hoher Message Number (> 10)
-            let currentState = aliceState;
-            for (let i = 0; i < 20; i++) {
-                const [msg, newState] = await ratchetEncrypt(
-                    currentState,
+            // Alice sendet 50 Nachrichten
+            let currentAliceState = aliceState;
+            const messages = [];
+            for (let i = 0; i < 50; i++) {
+                const [msg, newState] = await ratchetEncryptHE(
+                    currentAliceState,
                     new TextEncoder().encode(`Message ${i}`)
                 );
-                currentState = newState;
-
-                // Nur die letzte Nachricht (Message 19)
-                if (i === 19) {
-                    // Bob versucht zu empfangen, sollte fehlschlagen
-                    await expect(ratchetDecrypt(bobState, msg)).rejects.toThrow('Too many skipped messages');
-                }
+                messages.push(msg);
+                currentAliceState = newState;
             }
+
+            // Bob empfängt nur die erste und letzte Nachricht
+            let [decrypted0, bobState1] = await ratchetDecryptHE(bobState, messages[0]);
+            let [decrypted49, bobState2] = await ratchetDecryptHE(bobState1, messages[49]);
+
+            // 48 Nachrichten wurden übersprungen
+            expect(bobState2.skippedMessageKeys.size).toBe(48);
+
+            // Empfange einige zufällige übersprungene Nachrichten
+            let currentBobState = bobState2;
+            const indicesToReceive = [5, 10, 20, 25, 30, 40];
+            for (const i of indicesToReceive) {
+                const [decrypted, newState] = await ratchetDecryptHE(currentBobState, messages[i]);
+                expect(new TextDecoder().decode(decrypted)).toBe(`Message ${i}`);
+                currentBobState = newState;
+            }
+
+            // Skipped keys sollten entsprechend reduziert sein
+            expect(currentBobState.skippedMessageKeys.size).toBe(48 - indicesToReceive.length);
         });
     });
 
-    describe('Duplicate Messages', () => {
-        it('sollte doppelte Nachrichten nicht entschlüsseln können', async () => {
-            const aliceState = await DR_Init({
+    describe('Edge Cases', () => {
+        it('sollte duplizierte Nachrichten erkennen und ablehnen', async () => {
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
 
-            let bobState = await DR_Init({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
 
             // Alice sendet eine Nachricht
-            const [msg0, _] = await ratchetEncrypt(aliceState, new TextEncoder().encode('Message 0'));
+            const [msg, newAliceState] = await ratchetEncryptHE(aliceState, new TextEncoder().encode('Test'));
 
             // Bob empfängt die Nachricht
-            let [dec0, bobState1] = await ratchetDecrypt(bobState, msg0);
-            expect(new TextDecoder().decode(dec0)).toBe('Message 0');
+            let [decrypted, bobState1] = await ratchetDecryptHE(bobState, msg);
+            expect(new TextDecoder().decode(decrypted)).toBe('Test');
 
-            // Bob versucht die gleiche Nachricht nochmal zu empfangen
-            // Das sollte fehlschlagen, da der Message Key nicht mehr vorhanden ist
-            await expect(ratchetDecrypt(bobState1, msg0)).rejects.toThrow();
+            // Versuch, die gleiche Nachricht nochmal zu entschlüsseln sollte fehlschlagen
+            await expect(ratchetDecryptHE(bobState1, msg)).rejects.toThrow();
         });
-    });
 
-    describe('Mixed Scenarios', () => {
-        it('sollte bidirektionale out-of-order Kommunikation unterstützen', async () => {
-            let aliceState = await DR_Init({
+        it('sollte mit sehr langen Verzögerungen umgehen können', async () => {
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
 
-            let bobState = await DR_Init({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
+                isInitiator: false
+            });
+
+            // Alice sendet 100 Nachrichten
+            let currentAliceState = aliceState;
+            const messages = [];
+            for (let i = 0; i < 100; i++) {
+                const [msg, newState] = await ratchetEncryptHE(
+                    currentAliceState,
+                    new TextEncoder().encode(`Message ${i}`)
+                );
+                messages.push(msg);
+                currentAliceState = newState;
+            }
+
+            // Bob empfängt nur msg0, msg99, und dann msg50 (sehr verzögert)
+            let [decrypted0, bobState1] = await ratchetDecryptHE(bobState, messages[0]);
+            expect(new TextDecoder().decode(decrypted0)).toBe('Message 0');
+
+            let [decrypted99, bobState2] = await ratchetDecryptHE(bobState1, messages[99]);
+            expect(new TextDecoder().decode(decrypted99)).toBe('Message 99');
+
+            let [decrypted50, bobState3] = await ratchetDecryptHE(bobState2, messages[50]);
+            expect(new TextDecoder().decode(decrypted50)).toBe('Message 50');
+        });
+
+        it('sollte out-of-order Nachrichten nach DH Ratchet Step verarbeiten', async () => {
+            let aliceState = await DR_Init_HE({
+                rootKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
+                isInitiator: true
+            });
+
+            let bobState = await DR_Init_HE({
+                rootKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
 
             // Alice sendet 3 Nachrichten
-            const [aliceMsg0, aliceState1] = await ratchetEncrypt(aliceState, new TextEncoder().encode('Alice 0'));
-            const [aliceMsg1, aliceState2] = await ratchetEncrypt(aliceState1, new TextEncoder().encode('Alice 1'));
-            const [aliceMsg2, aliceState3] = await ratchetEncrypt(aliceState2, new TextEncoder().encode('Alice 2'));
+            const [aliceMsg0, aliceState1] = await ratchetEncryptHE(aliceState, new TextEncoder().encode('Alice-0'));
+            const [aliceMsg1, aliceState2] = await ratchetEncryptHE(aliceState1, new TextEncoder().encode('Alice-1'));
+            const [aliceMsg2, aliceState3] = await ratchetEncryptHE(aliceState2, new TextEncoder().encode('Alice-2'));
+            aliceState = aliceState3;
 
-            // Bob sendet 3 Nachrichten
-            const [bobMsg0, bobState1] = await ratchetEncrypt(bobState, new TextEncoder().encode('Bob 0'));
-            const [bobMsg1, bobState2] = await ratchetEncrypt(bobState1, new TextEncoder().encode('Bob 1'));
-            const [bobMsg2, bobState3] = await ratchetEncrypt(bobState2, new TextEncoder().encode('Bob 2'));
+            // Bob empfängt msg0
+            let [decrypted0, bobState1] = await ratchetDecryptHE(bobState, aliceMsg0);
+            expect(new TextDecoder().decode(decrypted0)).toBe('Alice-0');
 
-            // Beide empfangen out-of-order
-            // Bob empfängt: Alice 2, Alice 0, Alice 1
-            let [decA2, bobStateA] = await ratchetDecrypt(bobState3, aliceMsg2);
-            expect(new TextDecoder().decode(decA2)).toBe('Alice 2');
+            // Bob antwortet (DH Ratchet Step)
+            const [bobMsg0, bobState2] = await ratchetEncryptHE(bobState1, new TextEncoder().encode('Bob-0'));
+            bobState = bobState2;
 
-            let [decA0, bobStateB] = await ratchetDecrypt(bobStateA, aliceMsg0);
-            expect(new TextDecoder().decode(decA0)).toBe('Alice 0');
+            // Alice empfängt
+            let [decryptedBob0, aliceState4] = await ratchetDecryptHE(aliceState, bobMsg0);
+            aliceState = aliceState4;
 
-            let [decA1, bobStateC] = await ratchetDecrypt(bobStateB, aliceMsg1);
-            expect(new TextDecoder().decode(decA1)).toBe('Alice 1');
+            // Bob empfängt verspätete Nachrichten aus vorherigem Ratchet
+            let [decrypted2, bobState3] = await ratchetDecryptHE(bobState, aliceMsg2);
+            expect(new TextDecoder().decode(decrypted2)).toBe('Alice-2');
 
-            // Alice empfängt: Bob 1, Bob 2, Bob 0
-            let [decB1, aliceStateA] = await ratchetDecrypt(aliceState3, bobMsg1);
-            expect(new TextDecoder().decode(decB1)).toBe('Bob 1');
+            let [decrypted1, bobState4] = await ratchetDecryptHE(bobState3, aliceMsg1);
+            expect(new TextDecoder().decode(decrypted1)).toBe('Alice-1');
+        });
+    });
 
-            let [decB2, aliceStateB] = await ratchetDecrypt(aliceStateA, bobMsg2);
-            expect(new TextDecoder().decode(decB2)).toBe('Bob 2');
+    describe('Performance', () => {
+        it('sollte viele out-of-order Nachrichten effizient verarbeiten', async () => {
+            const aliceState = await DR_Init_HE({
+                rootKey,
+                ourRatchetKeyPair: aliceRatchetKeyPair,
+                theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedHKA,
+                nextReceivingHeaderKey: sharedNHKB,
+                isInitiator: true
+            });
 
-            let [decB0, aliceStateC] = await ratchetDecrypt(aliceStateB, bobMsg0);
-            expect(new TextDecoder().decode(decB0)).toBe('Bob 0');
+            let bobState = await DR_Init_HE({
+                rootKey,
+                ourRatchetKeyPair: bobRatchetKeyPair,
+                theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
+                sendingHeaderKey: sharedNHKB,
+                nextReceivingHeaderKey: sharedHKA,
+                isInitiator: false
+            });
+
+            const startTime = performance.now();
+
+            // Alice sendet 200 Nachrichten
+            let currentAliceState = aliceState;
+            const messages = [];
+            for (let i = 0; i < 200; i++) {
+                const [msg, newState] = await ratchetEncryptHE(
+                    currentAliceState,
+                    new TextEncoder().encode(`Message ${i}`)
+                );
+                messages.push(msg);
+                currentAliceState = newState;
+            }
+
+            // Bob empfängt alle Nachrichten in zufälliger Reihenfolge
+            const shuffledIndices = Array.from({ length: 200 }, (_, i) => i)
+                .sort(() => Math.random() - 0.5);
+
+            let currentBobState = bobState;
+            for (const i of shuffledIndices) {
+                const [decrypted, newState] = await ratchetDecryptHE(currentBobState, messages[i]);
+                expect(new TextDecoder().decode(decrypted)).toBe(`Message ${i}`);
+                currentBobState = newState;
+            }
+
+            const endTime = performance.now();
+            const duration = endTime - startTime;
+
+            // Performance Check: sollte unter 2 Sekunden sein
+            expect(duration).toBeLessThan(2000);
+
+            console.log(`200 out-of-order Nachrichten in ${duration.toFixed(2)}ms verarbeitet`);
         });
     });
 });

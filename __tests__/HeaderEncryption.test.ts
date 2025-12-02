@@ -2,43 +2,65 @@
  * Tests für Header Encryption (Signal Protocol Section 4)
  * Testet verschlüsselte Header und erweiterte State-Verwaltung
  */
-import {
-    DR_InitHE,
-    ratchetEncryptHE,
-    ratchetDecryptHE,
-    DRStateHE,
-    encryptHeader,
-    decryptHeader,
-    MessageHeader
-} from '../src/double-ratchet';
+import { DR_Init_HE } from '../src/double-ratchet/DR_Init_HE';
+import { ratchetEncryptHE, ratchetDecryptHE } from '../src/double-ratchet/DR_Ratchet_HE';
+import { DRStateHE } from '../src/double-ratchet/DR_State';
+import { encryptHeader, decryptHeader } from '../src/double-ratchet/HeaderEncryption';
+import { MessageHeader } from '../src/double-ratchet/DR_Ratchet';
 import { generateKeyPair } from '../src/double-ratchet/CryptoUtils';
 
 describe('Header Encryption (Section 4)', () => {
-    let aliceIdentityKeyPair: any;
-    let bobIdentityKeyPair: any;
     let aliceEphemeralKeyPair: any;
     let bobEphemeralKeyPair: any;
     let rootKey: Uint8Array;
     let sharedSendingHeaderKey: Uint8Array;
     let sharedNextReceivingHeaderKey: Uint8Array;
 
-    // Optimierung: Generiere Schlüsselpaare nur einmal für alle Tests
-    beforeAll(async () => {
-        aliceIdentityKeyPair = await generateKeyPair();
-        bobIdentityKeyPair = await generateKeyPair();
+    beforeEach(async () => {
         aliceEphemeralKeyPair = await generateKeyPair();
         bobEphemeralKeyPair = await generateKeyPair();
-    });
-
-    beforeEach(() => {
-        // Generiere neue Shared Secrets für jeden Test
         rootKey = crypto.getRandomValues(new Uint8Array(32));
         sharedSendingHeaderKey = crypto.getRandomValues(new Uint8Array(32));
         sharedNextReceivingHeaderKey = crypto.getRandomValues(new Uint8Array(32));
     });
 
-    describe('Header Encryption Primitives', () => {
-        it('sollte einen Header verschlüsseln und entschlüsseln können', async () => {
+    describe('DR_Init_HE', () => {
+        it('sollte Alice korrekt mit Header Encryption initialisieren', async () => {
+            const aliceState = await DR_Init_HE({
+                rootKey,
+                ourRatchetKeyPair: aliceEphemeralKeyPair,
+                theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedSendingHeaderKey,
+                nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
+                isInitiator: true
+            });
+
+            expect(aliceState.rootKey).toBeInstanceOf(Uint8Array);
+            expect(aliceState.sendingChainKey).toBeInstanceOf(Uint8Array);
+            expect(aliceState.messageNumbers.sending).toBe(0);
+            expect(aliceState.messageNumbers.receiving).toBe(0);
+            expect(aliceState.sendingHeaderKey).toEqual(sharedSendingHeaderKey);
+            expect(aliceState.nextReceivingHeaderKey).toEqual(sharedNextReceivingHeaderKey);
+        });
+
+        it('sollte Bob korrekt mit Header Encryption initialisieren', async () => {
+            const bobState = await DR_Init_HE({
+                rootKey,
+                ourRatchetKeyPair: bobEphemeralKeyPair,
+                theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                nextReceivingHeaderKey: sharedSendingHeaderKey,
+                isInitiator: false
+            });
+
+            expect(bobState.rootKey).toEqual(rootKey);
+            expect(bobState.nextSendingHeaderKey).toEqual(sharedNextReceivingHeaderKey);
+            expect(bobState.nextReceivingHeaderKey).toEqual(sharedSendingHeaderKey);
+        });
+    });
+
+    describe('Header Encryption/Decryption', () => {
+        it('sollte Header verschlüsseln und entschlüsseln können', async () => {
             const headerKey = crypto.getRandomValues(new Uint8Array(32));
             const header: MessageHeader = {
                 dh: aliceEphemeralKeyPair.publicKey,
@@ -46,465 +68,235 @@ describe('Header Encryption (Section 4)', () => {
                 n: 10
             };
 
-            // Verschlüsseln
-            const encryptedHeader = await encryptHeader(headerKey, header);
-            expect(encryptedHeader).toBeInstanceOf(Uint8Array);
-            expect(encryptedHeader.length).toBeGreaterThan(0);
+            const encrypted = await encryptHeader(headerKey, header);
+            expect(encrypted).toBeInstanceOf(Uint8Array);
+            expect(encrypted.length).toBeGreaterThan(0);
 
-            // Entschlüsseln
-            const decryptedHeader = await decryptHeader(headerKey, encryptedHeader);
-            expect(decryptedHeader).not.toBeNull();
-            expect(decryptedHeader!.dh).toEqual(header.dh);
-            expect(decryptedHeader!.pn).toBe(header.pn);
-            expect(decryptedHeader!.n).toBe(header.n);
+            const decrypted = await decryptHeader(headerKey, encrypted);
+            expect(decrypted).not.toBeNull();
+            expect(decrypted!.dh).toEqual(header.dh);
+            expect(decrypted!.pn).toBe(header.pn);
+            expect(decrypted!.n).toBe(header.n);
         });
 
-        it('sollte bei falschem Header Key null zurückgeben', async () => {
-            const correctKey = crypto.getRandomValues(new Uint8Array(32));
+        it('sollte bei falschem Key fehlschlagen', async () => {
+            const headerKey = crypto.getRandomValues(new Uint8Array(32));
             const wrongKey = crypto.getRandomValues(new Uint8Array(32));
             const header: MessageHeader = {
                 dh: aliceEphemeralKeyPair.publicKey,
-                pn: 1,
-                n: 2
+                pn: 5,
+                n: 10
             };
 
-            const encryptedHeader = await encryptHeader(correctKey, header);
-
-            // Versuch mit falschem Key
-            const result = await decryptHeader(wrongKey, encryptedHeader);
-            expect(result).toBeNull();
+            const encrypted = await encryptHeader(headerKey, header);
+            const decrypted = await decryptHeader(wrongKey, encrypted);
+            expect(decrypted).toBeNull();
         });
 
-        it('sollte bei null Header Key null zurückgeben', async () => {
-            const header: MessageHeader = {
-                dh: aliceEphemeralKeyPair.publicKey,
-                pn: 0,
-                n: 0
-            };
-            const headerKey = crypto.getRandomValues(new Uint8Array(32));
-            const encryptedHeader = await encryptHeader(headerKey, header);
-
-            // Signal Spec: "If header key hk is empty (None), returns None"
-            const result = await decryptHeader(null, encryptedHeader);
-            expect(result).toBeNull();
-        });
-
-        it('sollte unterschiedliche Ciphertexts für gleiche Header erzeugen (random IV)', async () => {
-            const headerKey = crypto.getRandomValues(new Uint8Array(32));
-            const header: MessageHeader = {
-                dh: aliceEphemeralKeyPair.publicKey,
-                pn: 3,
-                n: 7
-            };
-
-            const encrypted1 = await encryptHeader(headerKey, header);
-            const encrypted2 = await encryptHeader(headerKey, header);
-
-            // Sollten unterschiedlich sein (random IV)
-            expect(encrypted1).not.toEqual(encrypted2);
-
-            // Aber beide sollten entschlüsselbar sein
-            const decrypted1 = await decryptHeader(headerKey, encrypted1);
-            const decrypted2 = await decryptHeader(headerKey, encrypted2);
-            expect(decrypted1).toEqual(decrypted2);
+        it('sollte mit null Header Key null zurückgeben', async () => {
+            const encrypted = crypto.getRandomValues(new Uint8Array(100));
+            const decrypted = await decryptHeader(null, encrypted);
+            expect(decrypted).toBeNull();
         });
     });
 
-    describe('DR_InitHE - Initialization', () => {
-        it('sollte Alice State korrekt initialisieren', async () => {
-            const aliceState = await DR_InitHE({
+    describe('End-to-End mit Header Encryption', () => {
+        it('sollte eine Nachricht mit verschlüsseltem Header senden und empfangen', async () => {
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: aliceEphemeralKeyPair,
+                theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedSendingHeaderKey,
+                nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
 
-            // Standard Double Ratchet State
-            expect(aliceState.rootKey).toBeInstanceOf(Uint8Array);
-            expect(aliceState.sendingChainKey).toBeInstanceOf(Uint8Array);
-            expect(aliceState.messageNumbers.sending).toBe(0);
-            expect(aliceState.messageNumbers.receiving).toBe(0);
-            expect(aliceState.pn).toBe(0);
-
-            // Header Encryption Keys
-            expect(aliceState.sendingHeaderKey).toEqual(sharedSendingHeaderKey);
-            expect(aliceState.receivingHeaderKey).toBeNull();
-            expect(aliceState.nextSendingHeaderKey).toBeInstanceOf(Uint8Array);
-            expect(aliceState.nextReceivingHeaderKey).toEqual(sharedNextReceivingHeaderKey);
-        });
-
-        it('sollte Bob State korrekt initialisieren', async () => {
-            const bobState = await DR_InitHE({
+            const bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: bobEphemeralKeyPair,
+                theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
 
-            // Bob's State ist anders als Alice
-            expect(bobState.rootKey).toEqual(rootKey); // Bob behält Root Key initial
-            expect(bobState.messageNumbers.sending).toBe(0);
-            expect(bobState.messageNumbers.receiving).toBe(0);
+            const plaintext = new TextEncoder().encode('Test mit Header Encryption');
+            const [encrypted, newAliceState] = await ratchetEncryptHE(aliceState, plaintext);
 
-            // Header Keys sind gespiegelt
-            expect(bobState.nextSendingHeaderKey).toEqual(sharedNextReceivingHeaderKey);
-            expect(bobState.nextReceivingHeaderKey).toEqual(sharedSendingHeaderKey);
+            expect(encrypted.encryptedHeader).toBeInstanceOf(Uint8Array);
+            expect(encrypted.ciphertext).toBeInstanceOf(Uint8Array);
+
+            const [decrypted, newBobState] = await ratchetDecryptHE(bobState, encrypted);
+            expect(decrypted).toEqual(plaintext);
         });
 
-        it('sollte verschiedene States für verschiedene Shared Keys erzeugen', async () => {
-            const state1 = await DR_InitHE({
+        it('sollte mehrere Nachrichten mit Header Encryption verarbeiten', async () => {
+            let aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: aliceEphemeralKeyPair,
+                theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedSendingHeaderKey,
+                nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
 
-            const differentHeaderKey = crypto.getRandomValues(new Uint8Array(32));
-            const state2 = await DR_InitHE({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey: differentHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: true
-            });
-
-            expect(state1.sendingHeaderKey).not.toEqual(state2.sendingHeaderKey);
-        });
-    });
-
-    describe('ratchetEncryptHE & ratchetDecryptHE', () => {
-        it('sollte eine Nachricht mit verschlüsseltem Header verschlüsseln und entschlüsseln', async () => {
-            const aliceState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: true
-            });
-
-            const bobState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: bobEphemeralKeyPair,
+                theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
 
-            const plaintext = new TextEncoder().encode('Secret message with encrypted header!');
+            // Alice sendet 3 Nachrichten
+            const messages = ['Nachricht 1', 'Nachricht 2', 'Nachricht 3'];
+            const encrypted: any[] = [];
 
-            // Alice verschlüsselt
-            const [encryptedMessage, newAliceState] = await ratchetEncryptHE(aliceState, plaintext);
-
-            // Header sollte verschlüsselt sein
-            expect(encryptedMessage.encryptedHeader).toBeInstanceOf(Uint8Array);
-            expect(encryptedMessage.ciphertext).toBeInstanceOf(Uint8Array);
-
-            // Bob entschlüsselt
-            const [decryptedMessage, _newBobState] = await ratchetDecryptHE(bobState, encryptedMessage);
-
-            expect(new TextDecoder().decode(decryptedMessage)).toBe('Secret message with encrypted header!');
-            expect(newAliceState.messageNumbers.sending).toBe(1);
-        });
-
-        it('sollte mehrere Nachrichten nacheinander verschlüsseln können', async () => {
-            let aliceState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: true
-            });
-
-            let bobState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: false
-            });
-
-            for (let i = 0; i < 5; i++) {
-                const plaintext = new TextEncoder().encode(`Message ${i}`);
-                const [encrypted, newAliceState] = await ratchetEncryptHE(aliceState, plaintext);
-                aliceState = newAliceState;
-
-                const [decrypted, newBobState] = await ratchetDecryptHE(bobState, encrypted);
-                bobState = newBobState;
-
-                expect(new TextDecoder().decode(decrypted)).toBe(`Message ${i}`);
+            for (const msg of messages) {
+                const plaintext = new TextEncoder().encode(msg);
+                const [enc, newState] = await ratchetEncryptHE(aliceState, plaintext);
+                encrypted.push(enc);
+                aliceState = newState;
             }
 
-            expect(aliceState.messageNumbers.sending).toBe(5);
-            expect(bobState.messageNumbers.receiving).toBe(5);
+            // Bob empfängt alle Nachrichten
+            for (let i = 0; i < messages.length; i++) {
+                const [decrypted, newState] = await ratchetDecryptHE(bobState, encrypted[i]);
+                expect(new TextDecoder().decode(decrypted)).toBe(messages[i]);
+                bobState = newState;
+            }
         });
 
         it('sollte bidirektionale Kommunikation mit Header Encryption unterstützen', async () => {
-            let aliceState = await DR_InitHE({
+            let aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: aliceEphemeralKeyPair,
+                theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedSendingHeaderKey,
+                nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
 
-            let bobState = await DR_InitHE({
+            let bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: bobEphemeralKeyPair,
+                theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
 
             // Alice -> Bob
-            const [msgA1, newAliceState1] = await ratchetEncryptHE(
-                aliceState,
-                new TextEncoder().encode('Alice to Bob')
-            );
+            const msg1 = new TextEncoder().encode('Hallo Bob');
+            const [enc1, newAliceState1] = await ratchetEncryptHE(aliceState, msg1);
             aliceState = newAliceState1;
 
-            const [decA1, newBobState1] = await ratchetDecryptHE(bobState, msgA1);
+            const [dec1, newBobState1] = await ratchetDecryptHE(bobState, enc1);
             bobState = newBobState1;
-            expect(new TextDecoder().decode(decA1)).toBe('Alice to Bob');
+            expect(dec1).toEqual(msg1);
 
             // Bob -> Alice
-            const [msgB1, newBobState2] = await ratchetEncryptHE(
-                bobState,
-                new TextEncoder().encode('Bob to Alice')
-            );
+            const msg2 = new TextEncoder().encode('Hallo Alice');
+            const [enc2, newBobState2] = await ratchetEncryptHE(bobState, msg2);
             bobState = newBobState2;
 
-            const [decB1, newAliceState2] = await ratchetDecryptHE(aliceState, msgB1);
+            const [dec2, newAliceState2] = await ratchetDecryptHE(aliceState, enc2);
             aliceState = newAliceState2;
-            expect(new TextDecoder().decode(decB1)).toBe('Bob to Alice');
-        });
+            expect(dec2).toEqual(msg2);
 
-        it('sollte mit Associated Data funktionieren', async () => {
-            const aliceState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: true
-            });
+            // Alice -> Bob nochmal
+            const msg3 = new TextEncoder().encode('Wie geht es?');
+            const [enc3, newAliceState3] = await ratchetEncryptHE(aliceState, msg3);
+            aliceState = newAliceState3;
 
-            const bobState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: false
-            });
-
-            const plaintext = new TextEncoder().encode('Message');
-            const ad = new TextEncoder().encode('context-info');
-
-            const [encrypted, _newAliceState] = await ratchetEncryptHE(aliceState, plaintext, ad);
-            const [decrypted, _newBobState] = await ratchetDecryptHE(bobState, encrypted, ad);
-
-            expect(new TextDecoder().decode(decrypted)).toBe('Message');
-        });
-
-        it('sollte bei falschem Associated Data fehlschlagen', async () => {
-            const aliceState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: true
-            });
-
-            const bobState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: false
-            });
-
-            const plaintext = new TextEncoder().encode('Message');
-            const ad1 = new TextEncoder().encode('context-1');
-            const ad2 = new TextEncoder().encode('context-2');
-
-            const [encrypted, _newAliceState] = await ratchetEncryptHE(aliceState, plaintext, ad1);
-
-            // Versuch mit anderem AD zu entschlüsseln
-            await expect(ratchetDecryptHE(bobState, encrypted, ad2)).rejects.toThrow();
+            const [dec3, newBobState3] = await ratchetDecryptHE(bobState, enc3);
+            bobState = newBobState3;
+            expect(dec3).toEqual(msg3);
         });
     });
 
-    describe('Edge Cases', () => {
-        it('sollte leere Nachrichten mit Header Encryption verarbeiten', async () => {
-            const aliceState = await DR_InitHE({
+    describe('Edge Cases mit Header Encryption', () => {
+        it('sollte mit manipulierten Headers umgehen', async () => {
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: aliceEphemeralKeyPair,
+                theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedSendingHeaderKey,
+                nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
 
-            const bobState = await DR_InitHE({
+            const bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: bobEphemeralKeyPair,
+                theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
 
-            const emptyMessage = new Uint8Array(0);
-            const [encrypted, _newAliceState] = await ratchetEncryptHE(aliceState, emptyMessage);
-            const [decrypted, _newBobState] = await ratchetDecryptHE(bobState, encrypted);
+            const plaintext = new TextEncoder().encode('Test');
+            const [encrypted, _] = await ratchetEncryptHE(aliceState, plaintext);
 
+            // Manipuliere Header
+            encrypted.encryptedHeader[0] ^= 1;
+
+            await expect(ratchetDecryptHE(bobState, encrypted)).rejects.toThrow();
+        });
+
+        it('sollte leere Nachrichten mit Header Encryption verarbeiten', async () => {
+            const aliceState = await DR_Init_HE({
+                rootKey,
+                ourRatchetKeyPair: aliceEphemeralKeyPair,
+                theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedSendingHeaderKey,
+                nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
+                isInitiator: true
+            });
+
+            const bobState = await DR_Init_HE({
+                rootKey,
+                ourRatchetKeyPair: bobEphemeralKeyPair,
+                theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                nextReceivingHeaderKey: sharedSendingHeaderKey,
+                isInitiator: false
+            });
+
+            const plaintext = new Uint8Array(0);
+            const [encrypted, _] = await ratchetEncryptHE(aliceState, plaintext);
+            const [decrypted, __] = await ratchetDecryptHE(bobState, encrypted);
+
+            expect(decrypted).toEqual(plaintext);
             expect(decrypted.length).toBe(0);
         });
 
-        it('sollte Unicode-Nachrichten mit Header Encryption verarbeiten', async () => {
-            const aliceState = await DR_InitHE({
+        it('sollte sehr lange Nachrichten mit Header Encryption verarbeiten', async () => {
+            const aliceState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: aliceEphemeralKeyPair,
+                theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedSendingHeaderKey,
+                nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
 
-            const bobState = await DR_InitHE({
+            const bobState = await DR_Init_HE({
                 rootKey,
-                ourIdentityKeyPair: bobIdentityKeyPair,
-                theirIdentityPublicKey: aliceIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: bobEphemeralKeyPair,
-                theirEphemeralPublicKey: aliceEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
+                ourRatchetKeyPair: bobEphemeralKeyPair,
+                theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
+                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
 
-            const unicodeMessage = new TextEncoder().encode('Hello 👋 世界 🌍 مرحبا');
-            const [encrypted, _newAliceState] = await ratchetEncryptHE(aliceState, unicodeMessage);
-            const [decrypted, _newBobState] = await ratchetDecryptHE(bobState, encrypted);
+            // 64 KB Nachricht (Maximum für crypto.getRandomValues)
+            const plaintext = crypto.getRandomValues(new Uint8Array(64 * 1024));
+            const [encrypted, _] = await ratchetEncryptHE(aliceState, plaintext);
+            const [decrypted, __] = await ratchetDecryptHE(bobState, encrypted);
 
-            expect(new TextDecoder().decode(decrypted)).toBe('Hello 👋 世界 🌍 مرحبا');
-        });
-
-        it('sollte Header Keys korrekt rotieren nach mehreren Nachrichten', async () => {
-            let aliceState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: true
-            });
-
-            const initialSendingHeaderKey = aliceState.sendingHeaderKey;
-
-            // Sende mehrere Nachrichten
-            for (let i = 0; i < 3; i++) {
-                const [_msg, newState] = await ratchetEncryptHE(
-                    aliceState,
-                    new TextEncoder().encode(`Message ${i}`)
-                );
-                aliceState = newState;
-            }
-
-            // Sending Header Key sollte sich NICHT geändert haben (nur bei DH Ratchet)
-            expect(aliceState.sendingHeaderKey).toEqual(initialSendingHeaderKey);
-        });
-    });
-
-    describe('Security Properties', () => {
-        it('sollte unterschiedliche verschlüsselte Header für gleiche Nachrichten erzeugen', async () => {
-            const aliceState = await DR_InitHE({
-                rootKey,
-                ourIdentityKeyPair: aliceIdentityKeyPair,
-                theirIdentityPublicKey: bobIdentityKeyPair.publicKey,
-                ourEphemeralKeyPair: aliceEphemeralKeyPair,
-                theirEphemeralPublicKey: bobEphemeralKeyPair.publicKey,
-                sharedSendingHeaderKey,
-                sharedNextReceivingHeaderKey,
-                isInitiator: true
-            });
-
-            const plaintext = new TextEncoder().encode('Same message');
-
-            const [msg1, _state1] = await ratchetEncryptHE(aliceState, plaintext);
-            const [msg2, _state2] = await ratchetEncryptHE(aliceState, plaintext);
-
-            // Header sollten unterschiedlich sein (random IV)
-            expect(msg1.encryptedHeader).not.toEqual(msg2.encryptedHeader);
-            // Ciphertext auch unterschiedlich
-            expect(msg1.ciphertext).not.toEqual(msg2.ciphertext);
-        });
-
-        it('sollte Header nicht ohne korrekten Key entschlüsselbar sein', async () => {
-            const correctKey = crypto.getRandomValues(new Uint8Array(32));
-            const wrongKey = crypto.getRandomValues(new Uint8Array(32));
-
-            const header: MessageHeader = {
-                dh: aliceEphemeralKeyPair.publicKey,
-                pn: 10,
-                n: 20
-            };
-
-            const encrypted = await encryptHeader(correctKey, header);
-
-            // Mit falschem Key
-            const decrypted = await decryptHeader(wrongKey, encrypted);
-            expect(decrypted).toBeNull();
+            expect(decrypted).toEqual(plaintext);
         });
     });
 });

@@ -1,0 +1,49 @@
+# Tests
+__tests__/
+*.test.ts
+*.test.tsx
+jest.config.js
+
+# Source maps
+*.map
+
+# TypeScript config
+tsconfig.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Documentation (wird separat included)
+docs/
+
+# Build artifacts
+*.log
+npm-debug.log*
+
+# React Native specific
+.bundle/
+.watchmanconfig
+app.json
+metro.config.js
+babel.config.js
+.prettierrc.js
+.eslintrc.js
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+
+# Misc
+fix_header_test.ps1
+SIGNAL_SPEC_COMPLIANCE.md
+

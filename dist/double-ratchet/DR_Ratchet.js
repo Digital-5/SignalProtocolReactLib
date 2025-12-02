@@ -213,6 +213,9 @@ async function ratchetDecrypt(state, message, associatedData) {
         currentState = await skipMessageKeys(currentState, messageNumber);
     }
     // 4. Leite Message Key ab und entschlüssele
+    if (!currentState.receivingChainKey) {
+        throw new Error('Cannot derive message key: receivingChainKey is null');
+    }
     const [newReceivingChainKey, messageKey] = await deriveMessageKey(currentState.receivingChainKey);
     const plaintext = await decryptMessageWithAD(messageKey, message.ciphertext, message.header, associatedData);
     // 5. Aktualisiere State
@@ -238,6 +241,10 @@ async function skipMessageKeys(state, untilMessageNumber) {
     // DoS-Schutz: Verhindere zu viele Skipped Keys
     if (untilMessageNumber - currentReceiving > maxSkip) {
         throw new Error(`Too many skipped messages: ${untilMessageNumber - currentReceiving} > ${maxSkip}`);
+    }
+    // Signal Spec: "if state.CKr != None"
+    if (!state.receivingChainKey) {
+        return state;
     }
     let currentChainKey = state.receivingChainKey;
     const newSkippedKeys = new Map(state.skippedMessageKeys);
