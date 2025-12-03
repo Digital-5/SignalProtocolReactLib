@@ -24,6 +24,7 @@ tsconfig.json
 docs/
 
 # Build artifacts
+dist/
 *.log
 npm-debug.log*
 
