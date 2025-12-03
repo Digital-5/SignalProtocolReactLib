@@ -8,7 +8,7 @@ describe('HKDF', () => {
     let hkdf: HKDF;
 
     beforeEach(() => {
-        hkdf = new HKDF('SHA-256');
+        hkdf = new HKDF('SHA-512');
     });
 
     describe('deriveKeys', () => {

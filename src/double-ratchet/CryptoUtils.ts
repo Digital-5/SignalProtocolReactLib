@@ -1,7 +1,9 @@
 /**
  * Kryptografische Hilfsfunktionen für das Double Ratchet Protocol
- * Verwendet ECDH (Elliptic Curve Diffie-Hellman) mit P-256 Kurve
+ * Verwendet X25519 (Curve25519) gemäß Signal Protocol Specification
+ * Implementiert mit @noble/curves für echte X25519 Unterstützung
  */
+import {x25519} from '@noble/curves/ed25519.js';
 
 /**
  * Schlüsselpaar-Interface für asymmetrische Kryptographie
@@ -12,67 +14,44 @@ export interface KeyPair {
 }
 
 /**
- * Generiert ein neues ECDH-Schlüsselpaar (P-256)
- * @returns Promise mit dem generierten Schlüsselpaar
+ * Generiert ein neues X25519-Schlüsselpaar (Curve25519)
+ * Signal Protocol Standard: Schneller, sicherer gegen Side-Channels
+ * @returns Promise mit dem generierten Schlüsselpaar (32 Bytes public, 32 Bytes private)
  */
 export async function generateKeyPair(): Promise<KeyPair> {
-    // Generiere ein ECDH-Schlüsselpaar mit P-256 Kurve
-    const keyPair = await crypto.subtle.generateKey(
-        {
-            name: "ECDH",
-            namedCurve: "P-256",
-        },
-        true,
-        ["deriveKey", "deriveBits"]
-    );
+    // Generiere 32 zufällige Bytes für Private Key
+    const privateKey = x25519.utils.randomSecretKey();
 
-    // Exportiere die Schlüssel als Byte-Arrays
-    const publicKey = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey));
-    const privateKey = new Uint8Array(await crypto.subtle.exportKey("pkcs8", keyPair.privateKey));
+    // Berechne Public Key = X25519(privateKey, basepoint)
+    const publicKey = x25519.getPublicKey(privateKey);
 
-    return { publicKey, privateKey };
+    return {
+        publicKey: new Uint8Array(publicKey),
+        privateKey: new Uint8Array(privateKey)
+    };
 }
 
 /**
- * Leitet ein gemeinsames Geheimnis mittels ECDH ab
- * @param privateKeyBytes - Unser privater Schlüssel (PKCS#8 Format)
- * @param publicKeyBytes - Öffentlicher Schlüssel der Gegenseite (Raw Format)
+ * Leitet ein gemeinsames Geheimnis mittels X25519 ab
+ * Signal Protocol Standard: ECDH mit Curve25519 (RFC 7748)
+ * @param privateKeyBytes - Unser privater Schlüssel (32 Bytes)
+ * @param publicKeyBytes - Öffentlicher Schlüssel der Gegenseite (32 Bytes)
  * @returns Das abgeleitete gemeinsame Geheimnis (32 Bytes)
  */
-export async function deriveSharedSecret(privateKeyBytes: Uint8Array, publicKeyBytes: Uint8Array): Promise<Uint8Array> {
-    // Importiere unseren privaten Schlüssel
-    const privateKey = await crypto.subtle.importKey(
-        "pkcs8",
-        privateKeyBytes.buffer as BufferSource,
-        {
-            name: "ECDH",
-            namedCurve: "P-256",
-        },
-        false,
-        ["deriveBits"]
-    );
+export async function deriveSharedSecret(
+    privateKeyBytes: Uint8Array,
+    publicKeyBytes: Uint8Array
+): Promise<Uint8Array> {
+    // Validierung
+    if (privateKeyBytes.length !== 32) {
+        throw new Error(`X25519 private key must be 32 bytes, got ${privateKeyBytes.length}`);
+    }
+    if (publicKeyBytes.length !== 32) {
+        throw new Error(`X25519 public key must be 32 bytes, got ${publicKeyBytes.length}`);
+    }
 
-    // Importiere den öffentlichen Schlüssel der Gegenseite
-    const publicKey = await crypto.subtle.importKey(
-        "raw",
-        publicKeyBytes.buffer as BufferSource,
-        {
-            name: "ECDH",
-            namedCurve: "P-256",
-        },
-        false,
-        []
-    );
-
-    // Führe ECDH aus und erhalte das gemeinsame Geheimnis
-    const sharedSecret = await crypto.subtle.deriveBits(
-        {
-            name: "ECDH",
-            public: publicKey,
-        },
-        privateKey,
-        256 // 256 Bits = 32 Bytes
-    );
+    // X25519(privateKey, publicKey) - Berechne Shared Secret
+    const sharedSecret = x25519.getSharedSecret(privateKeyBytes, publicKeyBytes);
 
     return new Uint8Array(sharedSecret);
 }
