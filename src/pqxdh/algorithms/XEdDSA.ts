@@ -1,0 +1,207 @@
+import {
+    bigintToUint8ArrayLE,
+    concatenateUint8Arrays,
+    CURVE25519_PARAMS,
+    getBasePoint,
+    hash,
+    hash_i,
+    mod,
+    u_to_y,
+    Uint8ArrayToBigintLE,
+    UInt8ArrayToHexString
+} from './CryptoMath.js'
+import {ed25519} from '@noble/curves/ed25519.js';
+
+/*
+XEdDSA Key Pair Calculation, Signing, and Verification
+This module implements the XEdDSA signature scheme, according to the signal XEdDSA specification.
+Also following the EdDSA signature scheme as defined in RFC 8032 and Curve25519 standards from RFC 7748.
+https://signal.org/docs/specifications/xeddsa/xeddsa.pdf
+ */
+
+// Includes fancy JSDoc comments :)
+
+/**
+ * Convert a Montgomery u-coordinate to an Edwards point encoding (y-coordinate with sign bit = 0)
+ * @param u - Montgomery u-coordinate
+ * @returns Edwards point encoding
+ */
+export function convert_mont(u: Uint8Array): Uint8Array {
+    let uBigint = Uint8ArrayToBigintLE(u)
+
+    // 1. u_masked = u mod p
+    // For some reason the signal specs say "mod 2^p" (Page 4), but this wouldn't work
+    // According and the curve definitions and my tests, it should be mod p
+    let u_masked = mod(uBigint, BigInt(CURVE25519_PARAMS.p));
+
+    // 2. P.y = u_to_y(u_masked)
+    // Birational map from Montgomery u to Edwards y according to RFC 7748, Section 4.1:
+    const y = u_to_y(u_masked);
+
+    // 3. P.s = 0
+    // We need to construct a point with y-coordinate and sign bit = 0
+    // Convert y to bytes (little-endian, 32 bytes)
+    const yBytes = bigintToUint8ArrayLE(y);
+
+    // Ensure sign bit (bit 255, MSB of byte 31) is 0
+    // eslint-disable-next-line no-bitwise
+    yBytes[31] &= 0x7f;
+
+    // Return the Edwards point encoding (y-coordinate with sign bit = 0)
+    return yBytes;
+}
+
+/**
+ * Calculate XEdDSA key pair from X25519 private key
+ * @param k - Private X25519 key
+ * @returns Object containing publicKey and privateKey as bigint
+ */
+export function calculate_key_pair(k: Uint8Array): {
+    publicKey: bigint;
+    privateKey: bigint;
+} {
+    const kBigint = Uint8ArrayToBigintLE(k);
+    // The curve order 'q' for Curve25519
+    const CURVE_ORDER_Q = CURVE25519_PARAMS.q;
+
+    // Normalize k to be within valid range [1, q-1]
+    // This is necessary because X25519 keys can be larger than Ed25519 order
+    let normalizedK = mod(kBigint, CURVE_ORDER_Q);
+
+    // 1. E = kB
+    // Perform scalar multiplication of the private key 'k' with the base point 'B'.
+    const E = getBasePoint().multiply(normalizedK);
+
+    // Determine E.s (the sign bit of E's x-coordinate).
+    // For Ed25519, the sign bit is determined from the x-coordinate when encoding.
+    // When a point is encoded: y-coordinate (255 bits) + sign bit of x (1 bit).
+    // eslint-disable-next-line no-bitwise
+    const Es = Number(E.x & 1n); // Sign bit is the LSB of x-coordinate
+
+    let a: bigint;
+    let A: bigint;
+
+    // 2. If E.s = 1: a = -k (mod q), negate the point
+    if (Es === 1) {
+        a = mod(-normalizedK, CURVE_ORDER_Q);
+        // A needs to have its sign bit A.s = 0.
+        // Negate the point to flip the sign bit.
+        const negE = E.negate();
+        A = negE.y;
+    } else {
+        // 3. Else: a = k (mod q)
+        a = normalizedK;
+        // If E already has s=0, then A is E itself.
+        A = E.y;
+    }
+
+    // The document specifies A.y = E.y and A.s = 0.
+    // Instead of changing the sign bit manually, we can negate the point if needed.
+
+    // Return the derived public key 'A' and the adjusted private key 'a'.
+    return { publicKey: A, privateKey: a };
+}
+
+/**
+ * XEdDSA Signing
+ * @param k - Private key as bigint
+ * @param M - Message to be signed
+ * @param Z - Random data (64 bytes)
+ * @returns Signature as Uint8Array (R || s)
+ */
+export function xeddsa_sign(k:Uint8Array, M:Uint8Array, Z:Uint8Array) {
+    // 1. Calculate key pair (A, a) from k
+
+    const keyPair = calculate_key_pair(k);
+    const a = bigintToUint8ArrayLE(keyPair.privateKey);
+    const A = bigintToUint8ArrayLE(keyPair.publicKey);
+
+    // r = hash_i(a, M, Z) mod q, where hash_i uses i=1
+    // hash_i returns 64 bytes, interpret as little-endian integer
+    const hashResult = hash_i(concatenateUint8Arrays([a, M, Z]), 1);
+    let r = Uint8ArrayToBigintLE(hashResult);
+    r = mod(r, CURVE25519_PARAMS.q);
+
+    // R = rB (point on the curve)
+    const R_point = getBasePoint().multiply(r);
+    const R = R_point.y;
+
+    // h = hash(R, A, M) mod q
+    // Encode R properly: y-coordinate with sign bit
+    const R_encoded = bigintToUint8ArrayLE(R);
+    // eslint-disable-next-line no-bitwise
+    R_encoded[31] |= (Number(R_point.x & 1n) << 7); // Add sign bit of x-coordinate
+
+    const hashInput = concatenateUint8Arrays([R_encoded, A, M]);
+    const hBytes = hash(hashInput)
+    let h = Uint8ArrayToBigintLE(hBytes);
+    h = mod(h, CURVE25519_PARAMS.q);
+
+    // s = (r + h*a) mod q
+    const s = mod(r + h * keyPair.privateKey, CURVE25519_PARAMS.q);
+
+    // Signature is (R || s)
+    return concatenateUint8Arrays([R_encoded, bigintToUint8ArrayLE(s)]);
+}
+
+/**
+ * XEdDSA Verification
+ * @param u - Public key to verify
+ * @param M - Signed message
+ * @param Signature - Signature provided
+ * @returns boolean - isValid
+ */
+export function xeddsa_verify(u:Uint8Array, M:Uint8Array, Signature:Uint8Array) {
+    // Extract R and s from signature, convert u
+    const R_encoded = Signature.slice(0, 32);
+    const s_bytes = Signature.slice(32, 64);
+    const s = Uint8ArrayToBigintLE(s_bytes);
+    const u_converted = Uint8ArrayToBigintLE(u);
+
+    // Extract R y-coordinate without sign bit for validation
+    const R_encoded_copy = new Uint8Array(R_encoded);
+    // eslint-disable-next-line no-bitwise
+    R_encoded_copy[31] &= 0x7f; // Clear sign bit
+    const R = Uint8ArrayToBigintLE(R_encoded_copy);
+
+    // 1. Check if u and Signature are of correct length
+    if (u_converted >= CURVE25519_PARAMS.p || R >= CURVE25519_PARAMS.p || s >= CURVE25519_PARAMS.q) {
+        return false;
+    }
+
+    // 2. Convert Montgomery u-coordinate to Edwards point A
+    const A_encoded = convert_mont(u);
+
+    // 3. Check if points are on the curve aka. valid
+    // Reconstruct points from encoded bytes
+    const BASE = getBasePoint();
+    let R_point;
+    let A_point;
+    try {
+        // For Ed25519, we need to recover the full point from the encoded form
+        // The encoding includes y-coordinate (255 bits) + sign bit of x (1 bit)
+        const R_hex = UInt8ArrayToHexString(R_encoded);
+        const A_hex = UInt8ArrayToHexString(A_encoded);
+        // Convert Uint8Array to hex string for fromHex method
+        R_point = ed25519.Point.fromHex(R_hex);
+        A_point = ed25519.Point.fromHex(A_hex);
+    } catch (e) {
+        // This happens when the points are not valid
+        console.error("Failed to decode points:", e);
+        return false;
+    }
+
+    // 4. h = hash(R || A || M) mod q
+    const hashInput = concatenateUint8Arrays([R_encoded, A_encoded, M]);
+    const hBytes = hash(hashInput);
+    let h = Uint8ArrayToBigintLE(hBytes);
+    h = mod(h, CURVE25519_PARAMS.q);
+
+    // 5. Verify: R_check = sB - hA
+    const sB = BASE.multiply(s);
+    const hA = A_point.multiply(h);
+    const R_check = sB.add(hA.negate());
+
+    // Compare R_check with R_point
+    return R_check.equals(R_point);
+}

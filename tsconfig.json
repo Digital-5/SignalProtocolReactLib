@@ -4,10 +4,13 @@
   "compilerOptions": {
     "outDir": "dist",
     "declaration": true,
-    "module": "commonjs",
+    "module": "ES2022",
     "target": "esnext",
     "jsx": "react",
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
   }
 }
