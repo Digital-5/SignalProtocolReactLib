@@ -1,9 +1,7 @@
 import { generateKemKeypair, encapsulate, decapsulate } from '../src/pqxdh/algorithms/Kyber';
-import { convert_mont, xeddsa_sign, xeddsa_verify} from '../src/pqxdh/algorithms/XEdDSA';
-import { generateX25519KeyPair, x25519PrivateKeyToUint8Array, x25519PublicKeyToUint8Array} from '../src/pqxdh/algorithms/X25519';
-import { bigintToUint8ArrayLE, UInt8ArrayToHexString, stringToUint8Array, Uint8ArrayToBigintLE} from '../src/pqxdh/algorithms/CryptoMath';
+import { convert_mont} from '../src/pqxdh/algorithms/XEdDSA';
+import { bigintToUint8ArrayLE, UInt8ArrayToHexString, stringToUint8Array} from '../src/pqxdh/algorithms/CryptoMath';
 import {generateX25519Keys, signKey, verifySignature} from "../src/pqxdh/interfaces/CryptoInterface";
-
 
 describe('PQXDH_Tests', () => {
     describe('XEdDSA', () => {
@@ -15,8 +13,9 @@ describe('PQXDH_Tests', () => {
         it('Generating X25519, signing and verifying the signature', async () => {
             const stringKeys = generateX25519Keys();
             const message = "Test Key?";
-            const signature = signKey(stringKeys.privateKey, message);
-            const isValid = verifySignature(stringKeys.publicKey, message, signature);
+            const messageBytes = stringToUint8Array(message);
+            const signature = signKey(stringKeys.privateKey, messageBytes);
+            const isValid = verifySignature(stringKeys.publicKey, messageBytes, signature);
             expect(isValid).toBe(true);
         });
     });

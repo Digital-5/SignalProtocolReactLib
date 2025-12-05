@@ -124,6 +124,7 @@ export function UInt8ArrayToHexString(uint8array: Uint8Array): string {
 
 export function HexStringToUInt8Array(hex: string): Uint8Array {
     if (hex.length % 2 !== 0) {
+        console.log(hex.length);
         throw new Error("Invalid hex string");
     }
     const uint8array = new Uint8Array(hex.length / 2);
