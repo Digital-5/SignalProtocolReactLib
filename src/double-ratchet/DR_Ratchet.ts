@@ -2,21 +2,31 @@
  * Double Ratchet Core Funktionen
  * Implementiert Verschlüsselung, Entschlüsselung und Ratchet Steps
  */
-import { DRState } from "./DR_State";
-import { generateKeyPair, deriveSharedSecret } from "./CryptoUtils";
-import { HKDF } from "./HKDF";
+import {DRState} from "./DR_State";
+import {generateKeyPair, deriveSharedSecret} from "./CryptoUtils";
+import {HKDF} from "./HKDF";
 
 /**
  * Verschlüsselte Nachricht mit Header-Informationen
+ * Folgt der Signal Protocol Specification (Section 3)
  */
 export interface RatchetMessage {
-    /** Der öffentliche ephemere Schlüssel des Senders */
-    header: {
-        publicKey: Uint8Array;
-        messageNumber: number;
-    };
-    /** Die verschlüsselte Nachricht */
+    /** Message Header mit DH Public Key, Previous Chain Length, Message Number */
+    header: MessageHeader;
+    /** Die verschlüsselte Nachricht (AEAD) */
     ciphertext: Uint8Array;
+}
+
+/**
+ * Message Header (Signal Protocol kompatibel)
+ */
+export interface MessageHeader {
+    /** DH Ratchet Public Key */
+    dh: Uint8Array;
+    /** Previous Chain Length (Anzahl Nachrichten in vorheriger Sending Chain) */
+    pn: number;
+    /** Message Number in aktueller Chain */
+    n: number;
 }
 
 /**
@@ -33,7 +43,7 @@ export async function performDHRatchet(state: DRState, theirPublicKey: Uint8Arra
     const dhOutput = await deriveSharedSecret(state.ourEphemeralKeyPair.privateKey, theirPublicKey);
 
     // Leite neue Root Key und Receiving Chain Key ab
-    const hkdf = new HKDF('SHA-256');
+    const hkdf = new HKDF('SHA-512');
     const derivedKeys1 = await hkdf.deriveKeys(state.rootKey, dhOutput, 64);
     const newRootKey1 = derivedKeys1.slice(0, 32);
     const newReceivingChainKey = derivedKeys1.slice(32, 64);
@@ -46,16 +56,21 @@ export async function performDHRatchet(state: DRState, theirPublicKey: Uint8Arra
     const newRootKey2 = derivedKeys2.slice(0, 32);
     const newSendingChainKey = derivedKeys2.slice(32, 64);
 
+    // Signal Spec: PN = Ns (Anzahl Nachrichten in vorheriger Sending Chain)
+    // Ns und Nr werden auf 0 zurückgesetzt
     return {
         rootKey: newRootKey2,
         sendingChainKey: newSendingChainKey,
         receivingChainKey: newReceivingChainKey,
         ourEphemeralKeyPair: newKeyPair,
         theirEphemeralPublicKey: theirPublicKey,
+        pn: state.messageNumbers.sending, // PN = alte Sending Chain Länge
         messageNumbers: {
-            sending: 0,
-            receiving: 0
-        }
+            sending: 0,  // Reset auf 0
+            receiving: 0  // Reset auf 0
+        },
+        skippedMessageKeys: state.skippedMessageKeys, // Behalte vorhandene Skipped Keys
+        maxSkippedMessageKeys: state.maxSkippedMessageKeys
     };
 }
 
@@ -81,46 +96,46 @@ async function deriveMessageKey(chainKey: Uint8Array): Promise<[Uint8Array, Uint
 }
 
 /**
- * Verschlüsselt eine Nachricht mit AES-256-GCM
- * @param messageKey - Der Message Key für die Verschlüsselung
- * @param plaintext - Die zu verschlüsselnde Nachricht
- * @returns Die verschlüsselte Nachricht (inkl. IV)
+ * Serialisiert einen Message Header zu Bytes
+ * Format: dh_length(2) + dh + pn(4) + n(4)
  */
-async function encryptMessage(messageKey: Uint8Array, plaintext: Uint8Array): Promise<Uint8Array> {
-    // Generiere einen zufälligen IV (12 Bytes für GCM)
-    const iv = crypto.getRandomValues(new Uint8Array(12));
+function serializeHeader(header: MessageHeader): Uint8Array {
+    const dhLength = header.dh.length;
+    const result = new Uint8Array(2 + dhLength + 4 + 4);
+    const view = new DataView(result.buffer);
 
-    // Importiere den Message Key
-    const key = await crypto.subtle.importKey(
-        'raw',
-        messageKey as BufferSource,
-        { name: 'AES-GCM' },
-        false,
-        ['encrypt']
-    );
-
-    // Verschlüssele die Nachricht
-    const ciphertext = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        plaintext as BufferSource
-    );
-
-    // Kombiniere IV + Ciphertext
-    const result = new Uint8Array(iv.length + ciphertext.byteLength);
-    result.set(iv);
-    result.set(new Uint8Array(ciphertext), iv.length);
+    // DH Public Key Länge (2 Bytes)
+    view.setUint16(0, dhLength, false);
+    // DH Public Key
+    result.set(header.dh, 2);
+    // PN (4 Bytes)
+    view.setUint32(2 + dhLength, header.pn, false);
+    // N (4 Bytes)
+    view.setUint32(2 + dhLength + 4, header.n, false);
 
     return result;
 }
 
 /**
- * Entschlüsselt eine Nachricht mit AES-256-GCM
- * @param messageKey - Der Message Key für die Entschlüsselung (32 Bytes)
- * @param ciphertext - Die verschlüsselte Nachricht (inkl. IV)
- * @returns Die entschlüsselte Nachricht
+ * Konkateniert zwei Uint8Arrays
  */
-async function decryptMessage(messageKey: Uint8Array, ciphertext: Uint8Array): Promise<Uint8Array> {
+function concatUint8Arrays(a: Uint8Array, b: Uint8Array): Uint8Array {
+    const result = new Uint8Array(a.length + b.length);
+    result.set(a);
+    result.set(b, a.length);
+    return result;
+}
+
+/**
+ * Entschlüsselt eine Nachricht mit Associated Data (AEAD)
+ * Signal Spec: DECRYPT(mk, ciphertext, CONCAT(AD, header))
+ */
+async function decryptMessageWithAD(
+    messageKey: Uint8Array,
+    ciphertext: Uint8Array,
+    header: MessageHeader,
+    associatedData?: Uint8Array
+): Promise<Uint8Array> {
     // Extrahiere IV und Ciphertext
     const iv = ciphertext.slice(0, 12);
     const actualCiphertext = ciphertext.slice(12);
@@ -129,14 +144,24 @@ async function decryptMessage(messageKey: Uint8Array, ciphertext: Uint8Array): P
     const key = await crypto.subtle.importKey(
         'raw',
         messageKey as BufferSource,
-        { name: 'AES-GCM', length: 256 },
+        {name: 'AES-GCM', length: 256},
         false,
         ['decrypt']
     );
 
-    // Entschlüssele die Nachricht
+    // CONCAT(AD, header): Kombiniere AD + serialisierter Header
+    const headerBytes = serializeHeader(header);
+    const ad = associatedData
+        ? concatUint8Arrays(associatedData, headerBytes)
+        : headerBytes;
+
+    // Entschlüssele mit AEAD (GCM verifiziert AD automatisch)
     const plaintext = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv as BufferSource },
+        {
+            name: 'AES-GCM',
+            iv: iv as BufferSource,
+            additionalData: ad as BufferSource
+        },
         key,
         actualCiphertext as BufferSource
     );
@@ -146,26 +171,37 @@ async function decryptMessage(messageKey: Uint8Array, ciphertext: Uint8Array): P
 
 /**
  * Verschlüsselt eine Nachricht und aktualisiert den State (Ratchet Step)
+ * Signal Protocol kompatibel mit PN und AD Support
  * @param state - Aktueller Double Ratchet State
  * @param plaintext - Die zu verschlüsselnde Nachricht
+ * @param associatedData - Optional: Associated Data für AEAD (wird authentifiziert, aber nicht verschlüsselt)
  * @returns Tuple mit [verschlüsselte Nachricht, aktualisierter State]
  */
 export async function ratchetEncrypt(
     state: DRState,
-    plaintext: Uint8Array
+    plaintext: Uint8Array,
+    associatedData?: Uint8Array
 ): Promise<[RatchetMessage, DRState]> {
+
     // Leite Message Key aus Sending Chain Key ab
+    if (!state.sendingChainKey) {
+        throw new Error('Cannot derive message key: sendingChainKey is null');
+    }
     const [newSendingChainKey, messageKey] = await deriveMessageKey(state.sendingChainKey);
 
-    // Verschlüssele die Nachricht
-    const ciphertext = await encryptMessage(messageKey, plaintext);
+    // Erstelle Header (Signal Spec: HEADER(DHs, PN, Ns))
+    const header: MessageHeader = {
+        dh: state.ourEphemeralKeyPair.publicKey,
+        pn: state.pn,
+        n: state.messageNumbers.sending
+    };
 
-    // Erstelle die verschlüsselte Nachricht mit Header
+    // Verschlüssele die Nachricht mit AD (Signal Spec: ENCRYPT(mk, plaintext, CONCAT(AD, header)))
+    const ciphertext = await encryptMessageWithAD(messageKey, plaintext, header, associatedData);
+
+    // Erstelle die verschlüsselte Nachricht
     const message: RatchetMessage = {
-        header: {
-            publicKey: state.ourEphemeralKeyPair.publicKey,
-            messageNumber: state.messageNumbers.sending
-        },
+        header,
         ciphertext
     };
 
@@ -183,47 +219,189 @@ export async function ratchetEncrypt(
 }
 
 /**
+ * Verschlüsselt eine Nachricht mit Associated Data (AEAD)
+ * Signal Spec: ENCRYPT(mk, plaintext, CONCAT(AD, header))
+ */
+async function encryptMessageWithAD(
+    messageKey: Uint8Array,
+    plaintext: Uint8Array,
+    header: MessageHeader,
+    associatedData?: Uint8Array
+): Promise<Uint8Array> {
+    // Generiere einen zufälligen IV (12 Bytes für GCM)
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+
+    // Importiere den Message Key
+    const key = await crypto.subtle.importKey(
+        'raw',
+        messageKey as BufferSource,
+        {name: 'AES-GCM', length: 256},
+        false,
+        ['encrypt']
+    );
+
+    // CONCAT(AD, header): Kombiniere AD + serialisierter Header
+    const headerBytes = serializeHeader(header);
+    const ad = associatedData
+        ? concatUint8Arrays(associatedData, headerBytes)
+        : headerBytes;
+
+    // Verschlüssele mit AEAD (GCM authentifiziert AD automatisch)
+    const ciphertext = await crypto.subtle.encrypt(
+        {
+            name: 'AES-GCM',
+            iv: iv as BufferSource,
+            additionalData: ad as BufferSource
+        },
+        key,
+        plaintext as BufferSource
+    );
+
+    // Kombiniere IV + Ciphertext
+    const result = new Uint8Array(iv.length + ciphertext.byteLength);
+    result.set(iv);
+    result.set(new Uint8Array(ciphertext), iv.length);
+
+    return result;
+}
+
+/**
  * Entschlüsselt eine Nachricht und aktualisiert den State (Ratchet Step)
+ * Signal Protocol kompatibel mit PN und AD Support
+ * Unterstützt Out-of-Order Messages durch Skipped Message Keys
  * @param state - Aktueller Double Ratchet State
  * @param message - Die verschlüsselte Nachricht
+ * @param associatedData - Optional: Associated Data für AEAD-Verifikation
  * @returns Tuple mit [entschlüsselte Nachricht, aktualisierter State]
  */
 export async function ratchetDecrypt(
     state: DRState,
-    message: RatchetMessage
+    message: RatchetMessage,
+    associatedData?: Uint8Array
 ): Promise<[Uint8Array, DRState]> {
+    const receivedPublicKey = message.header.dh;
+    const messageNumber = message.header.n;
+    const previousNumber = message.header.pn;
+
+    // Erstelle Schlüssel für Skipped Message Keys Map
+    const skippedKeyId = createSkippedKeyId(receivedPublicKey, messageNumber);
+
+    // 1. Prüfe, ob wir bereits einen Skipped Message Key für diese Nachricht haben
+    const skippedKey = state.skippedMessageKeys.get(skippedKeyId);
+    if (skippedKey) {
+        // Entschlüssele mit dem gespeicherten Key
+        const plaintext = await decryptMessageWithAD(skippedKey.messageKey, message.ciphertext, message.header, associatedData);
+
+        // Entferne den verwendeten Key
+        const newSkippedKeys = new Map(state.skippedMessageKeys);
+        newSkippedKeys.delete(skippedKeyId);
+
+        return [plaintext, {
+            ...state,
+            skippedMessageKeys: newSkippedKeys
+        }];
+    }
+
+    // 2. Prüfe, ob wir einen DH Ratchet Step durchführen müssen
+    const keysAreDifferent = !arraysEqual(receivedPublicKey, state.theirEphemeralPublicKey);
     let currentState = state;
 
-    // Prüfe, ob wir einen DH Ratchet Step durchführen müssen
-    // (wenn sich der öffentliche Schlüssel der Gegenseite geändert hat)
-    const receivedPublicKey = message.header.publicKey;
-    const currentPublicKey = state.theirEphemeralPublicKey;
-
-    // Vergleiche die öffentlichen Schlüssel
-    const keysAreDifferent = !arraysEqual(receivedPublicKey, currentPublicKey);
-
     if (keysAreDifferent) {
+        // Signal Spec: SkipMessageKeys(previousNumber)
+        // Überspringe Nachrichten in der ALTEN Receiving Chain basierend auf PN
+        currentState = await skipMessageKeys(currentState, previousNumber);
+
         // Führe DH Ratchet aus
         currentState = await performDHRatchet(currentState, receivedPublicKey);
     }
 
-    // Leite Message Key aus Receiving Chain Key ab
+    // 3. Überspringe Nachrichten in der AKTUELLEN Receiving Chain (Out-of-Order)
+    if (messageNumber > currentState.messageNumbers.receiving) {
+        currentState = await skipMessageKeys(currentState, messageNumber);
+    }
+
+    // 4. Leite Message Key ab und entschlüssele
+    if (!currentState.receivingChainKey) {
+        throw new Error('Cannot derive message key: receivingChainKey is null');
+    }
     const [newReceivingChainKey, messageKey] = await deriveMessageKey(currentState.receivingChainKey);
+    const plaintext = await decryptMessageWithAD(messageKey, message.ciphertext, message.header, associatedData);
 
-    // Entschlüssele die Nachricht
-    const plaintext = await decryptMessage(messageKey, message.ciphertext);
-
-    // Aktualisiere den State
+    // 5. Aktualisiere State
     const newState: DRState = {
         ...currentState,
         receivingChainKey: newReceivingChainKey,
         messageNumbers: {
             ...currentState.messageNumbers,
-            receiving: message.header.messageNumber + 1
+            receiving: messageNumber + 1
         }
     };
 
     return [plaintext, newState];
+}
+
+/**
+ * Überspringt Message Keys für fehlende Nachrichten (Out-of-Order)
+ * @param state - Aktueller State
+ * @param untilMessageNumber - Bis zu welcher Message Number übersprungen werden soll
+ * @returns Aktualisierter State mit gespeicherten Skipped Message Keys
+ */
+async function skipMessageKeys(state: DRState, untilMessageNumber: number): Promise<DRState> {
+    const maxSkip = state.maxSkippedMessageKeys || 1000;
+    const currentReceiving = state.messageNumbers.receiving;
+
+    // DoS-Schutz: Verhindere zu viele Skipped Keys
+    if (untilMessageNumber - currentReceiving > maxSkip) {
+        throw new Error(`Too many skipped messages: ${untilMessageNumber - currentReceiving} > ${maxSkip}`);
+    }
+
+    // Signal Spec: "if state.CKr != None"
+    if (!state.receivingChainKey) {
+        return state;
+    }
+
+    let currentChainKey = state.receivingChainKey;
+    const newSkippedKeys = new Map(state.skippedMessageKeys);
+
+    // Leite Message Keys für alle übersprungenen Nachrichten ab
+    for (let i = currentReceiving; i < untilMessageNumber; i++) {
+        const [newChainKey, messageKey] = await deriveMessageKey(currentChainKey);
+
+        // Speichere den Message Key
+        const keyId = createSkippedKeyId(state.theirEphemeralPublicKey, i);
+        newSkippedKeys.set(keyId, {
+            messageKey: messageKey,
+            timestamp: Date.now()
+        });
+
+        currentChainKey = newChainKey;
+    }
+
+    // Cleanup alte Skipped Keys (älter als 7 Tage)
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const [keyId, skippedKey] of newSkippedKeys.entries()) {
+        if (skippedKey.timestamp < sevenDaysAgo) {
+            newSkippedKeys.delete(keyId);
+        }
+    }
+
+    return {
+        ...state,
+        receivingChainKey: currentChainKey,
+        skippedMessageKeys: newSkippedKeys
+    };
+}
+
+/**
+ * Erstellt einen eindeutigen Identifier für einen Skipped Message Key
+ * @param publicKey - Der öffentliche Schlüssel
+ * @param messageNumber - Die Message Number
+ * @returns String-Identifier im Format "base64(publicKey):messageNumber"
+ */
+function createSkippedKeyId(publicKey: Uint8Array, messageNumber: number): string {
+    // Konvertiere Public Key zu Base64 für Map-Key
+    const keyBase64 = btoa(String.fromCodePoint(...Array.from(publicKey)));
+    return `${keyBase64}:${messageNumber}`;
 }
 
 /**
@@ -239,4 +417,3 @@ function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
     }
     return true;
 }
-

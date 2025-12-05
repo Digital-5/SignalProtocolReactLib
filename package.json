@@ -7,8 +7,8 @@
   "type": "module",
   "files": [
     "dist",
-    "src",
-    "README.md"
+    "README.md",
+    "USAGE.md"
   ],
   "keywords": [
     "signal-protocol",
@@ -18,8 +18,7 @@
     "cryptography",
     "typescript"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "Digital5",
   "scripts": {
     "run": "npm run build && node dist/index.js",
     "build": "tsc",
@@ -34,6 +33,18 @@
     "react": "19.1.1",
     "react-native": "0.82.1",
     "react-native-safe-area-context": "^5.5.2"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.70.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

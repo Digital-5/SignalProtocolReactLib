@@ -1,7 +1,6 @@
 module.exports = {
-  preset: 'ts-jest/presets/default-esm',
+  preset: 'ts-jest',
   testEnvironment: 'node',
-  extensionsToTreatAsEsm: ['.ts'],
   roots: ['<rootDir>/__tests__'],
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js'],
@@ -33,3 +32,4 @@ module.exports = {
     'node_modules/(?!(@noble|crystals-kyber-js)/)',
   ],
 };
+
