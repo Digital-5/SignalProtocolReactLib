@@ -66,13 +66,6 @@ npm link signal-protocol-react-lib
   }
 }
 ```
-
-**Option 3: Git Repository**
-
-```bash
-npm install git+https://github.com/dein-username/SignalProtocolReactLib.git
-```
-
 ## 🚀 Verwendung
 
 ### Grundlegende Verwendung
