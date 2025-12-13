@@ -3,4 +3,4 @@
  * Eine TypeScript-Implementierung des Signal Protocol für sichere End-to-End-Verschlüsselung
  */
 
-export * from './interfaces/CryptoInterface';
+export * from './pqxdh/index';
