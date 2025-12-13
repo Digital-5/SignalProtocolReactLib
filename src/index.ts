@@ -4,3 +4,4 @@
  */
 
 export * from './pqxdh/index';
+export * from './double-ratchet/index';
