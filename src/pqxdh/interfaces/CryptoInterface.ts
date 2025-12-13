@@ -6,9 +6,10 @@
 
 import {HexStringToUInt8Array, UInt8ArrayToHexString} from "../algorithms/CryptoMath";
 import {xeddsa_sign, xeddsa_verify} from "../algorithms/XEdDSA";
-import {generateX25519KeyPair, x25519PrivateKeyToUint8Array, x25519PublicKeyToUint8Array} from "../algorithms/X25519";
+import {generateX25519KeyPair, x25519PrivateKeyToUint8Array, x25519PublicKeyToUint8Array, deriveSharedSecret} from "../algorithms/X25519";
 import {StringKeyPair} from "../objects/StringKeyPair";
 import {generateKemKeypair} from "../algorithms/Kyber";
+import {HKDF_Func} from "../algorithms/HKDF";
 
 export function generateX25519Keys(): StringKeyPair {
     const keyPair = generateX25519KeyPair()
@@ -43,4 +44,16 @@ export function verifySignature(publicKey: string, data: Uint8Array, signature: 
     const signatureBytes = HexStringToUInt8Array(signature);
     const isValid = xeddsa_verify(publicKeyBytes, dataBytes, signatureBytes);
     return isValid;
+}
+
+export async function diffieHellman(privateKey: string, publicKey: string): Promise<string> {
+    const privateKeyBytes = HexStringToUInt8Array(privateKey);
+    const publicKeyBytes = HexStringToUInt8Array(publicKey);
+    const sharedSecretBytes = await deriveSharedSecret(privateKeyBytes, publicKeyBytes);
+    const sharedSecretHex = UInt8ArrayToHexString(sharedSecretBytes);
+    return sharedSecretHex;
+}
+
+export async function HKDF(input: Uint8Array): Promise<Uint8Array> {
+    return HKDF_Func(input);
 }
