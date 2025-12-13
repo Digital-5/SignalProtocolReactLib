@@ -10,7 +10,7 @@ export class HKDF {
      * Erstellt eine neue HKDF-Instanz
      * @param hash - Der zu verwendende Hash-Algorithmus (Standard: SHA-256)
      */
-    constructor(hash: string = 'SHA-256') {
+    constructor(hash: string = 'SHA-512') {
         this.hash = hash;
     }
 
