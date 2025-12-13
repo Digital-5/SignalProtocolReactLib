@@ -54,6 +54,6 @@ export async function diffieHellman(privateKey: string, publicKey: string): Prom
     return sharedSecretHex;
 }
 
-export async function HKDF(input: Uint8Array): Promise<Uint8Array> {
+export async function HKDF_NotFromCopilot(input: Uint8Array): Promise<Uint8Array> {
     return HKDF_Func(input);
 }
