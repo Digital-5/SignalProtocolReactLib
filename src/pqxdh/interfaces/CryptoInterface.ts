@@ -28,8 +28,8 @@ export async function generateKyberKeyPair(): Promise<StringKeyPair> {
     }
 }
 
-export function signKey(privateKey: string, toSign: Uint8Array) {
-    const dataBytes = toSign;
+export function signKey(privateKey: string, toSign: string) {
+    const dataBytes = HexStringToUInt8Array(toSign);
     const privateKeyBytes = HexStringToUInt8Array(privateKey);
     const randomness = crypto.getRandomValues(new Uint8Array(64));
     const signature = xeddsa_sign(privateKeyBytes, dataBytes, randomness);
