@@ -3,9 +3,9 @@ import {DRStateHE, SkippedMessageKey} from './DR_State';
 import {HKDF} from './HKDF';
 
 export interface DRInitParamsHE {
-    rootKey: Uint8Array;
-    ourRatchetKeyPair: KeyPair;
-    theirRatchetPublicKey: Uint8Array;
+    rootKey: Uint8Array; //SharedSecret from PQXDH
+    ourRatchetKeyPair: KeyPair; // One-Time Keypair used in PQXDH X25519
+    theirRatchetPublicKey: Uint8Array; // Ephemeral key from sender PQXDH
     sendingHeaderKey: Uint8Array;
     nextReceivingHeaderKey: Uint8Array;
     isInitiator: boolean;
