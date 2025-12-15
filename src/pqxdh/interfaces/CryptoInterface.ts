@@ -8,7 +8,7 @@ import {HexStringToUInt8Array, UInt8ArrayToHexString} from "../algorithms/Crypto
 import {xeddsa_sign, xeddsa_verify} from "../algorithms/XEdDSA";
 import {generateX25519KeyPair, x25519PrivateKeyToUint8Array, x25519PublicKeyToUint8Array, deriveSharedSecret} from "../algorithms/X25519";
 import {StringKeyPair} from "../objects/StringKeyPair";
-import {generateKemKeypair} from "../algorithms/Kyber";
+import {generateKemKeypair, encapsulate, decapsulate} from "../algorithms/Kyber";
 import {HKDF_Func} from "../algorithms/HKDF";
 
 export function generateX25519Keys(): StringKeyPair {
@@ -29,6 +29,22 @@ export async function generateKyberKeyPair(): Promise<StringKeyPair> {
     }
 }
 
+export async function encapsulateKyber(publicKey: string): Promise<{ cipherText: string, sharedSecret: string }> {
+    const publicKeyBytes = HexStringToUInt8Array(publicKey);
+    const { cipherText: cipherText, sharedSecret: sharedSecret } = await encapsulate(publicKeyBytes);
+    return {
+        cipherText: UInt8ArrayToHexString(cipherText),
+        sharedSecret: UInt8ArrayToHexString(sharedSecret)
+    };
+}
+
+export async function decapsulateKyber(cipherText: string, privateKey: string): Promise<string> {
+    const cipherTextBytes = HexStringToUInt8Array(cipherText);
+    const privateKeyBytes = HexStringToUInt8Array(privateKey);
+    const sharedSecretBytes = await decapsulate(cipherTextBytes, privateKeyBytes);
+    return UInt8ArrayToHexString(sharedSecretBytes);
+}
+
 export function signKey(privateKey: string, toSign: string) {
     const dataBytes = HexStringToUInt8Array(toSign);
     const privateKeyBytes = HexStringToUInt8Array(privateKey);
@@ -38,15 +54,15 @@ export function signKey(privateKey: string, toSign: string) {
     return signatureHex;
 }
 
-export function verifySignature(publicKey: string, data: Uint8Array, signature: string) {
+export function verifySignature(publicKey: string, data: string, signature: string) {
     const publicKeyBytes = HexStringToUInt8Array(publicKey);
-    const dataBytes = data;
+    const dataBytes = HexStringToUInt8Array(data);
     const signatureBytes = HexStringToUInt8Array(signature);
     const isValid = xeddsa_verify(publicKeyBytes, dataBytes, signatureBytes);
     return isValid;
 }
 
-export async function diffieHellman(privateKey: string, publicKey: string): Promise<string> {
+export async function stringDiffieHellman(privateKey: string, publicKey: string): Promise<string> {
     const privateKeyBytes = HexStringToUInt8Array(privateKey);
     const publicKeyBytes = HexStringToUInt8Array(publicKey);
     const sharedSecretBytes = await deriveSharedSecret(privateKeyBytes, publicKeyBytes);
@@ -54,6 +70,7 @@ export async function diffieHellman(privateKey: string, publicKey: string): Prom
     return sharedSecretHex;
 }
 
-export async function HKDF_NotFromCopilot(input: Uint8Array): Promise<Uint8Array> {
-    return HKDF_Func(input);
+export async function stringHKDF(input: string): Promise<Uint8Array> {
+    const hex = HexStringToUInt8Array(input);
+    return HKDF_Func(hex);
 }

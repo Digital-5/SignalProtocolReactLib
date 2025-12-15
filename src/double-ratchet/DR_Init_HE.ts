@@ -4,10 +4,9 @@ import {HKDF} from './HKDF';
 import {StringKeyPair} from "../pqxdh/objects/StringKeyPair";
 
 export interface DRInitParamsHE {
-    rootKey: Uint8Array;
-    ourRatchetKeyPair: StringKeyPair; //von pqxdh private und publickeys speicher zu keypair umwandeln
-    //ourRatchetKeyPairUint8 := stringKeyPairToKeyPair(params.ourRatchetKeyPair); das wird aber nicht gefordert
-    theirRatchetPublicKey: Uint8Array;
+    rootKey: Uint8Array; //SharedSecret from PQXDH
+    ourRatchetKeyPair: KeyPair; // One-Time Keypair used in PQXDH X25519
+    theirRatchetPublicKey: Uint8Array; // Ephemeral key from sender PQXDH
     sendingHeaderKey: Uint8Array;
     nextReceivingHeaderKey: Uint8Array;
     isInitiator: boolean;
@@ -94,15 +93,3 @@ async function KDF_RK_HE(rk: Uint8Array, dhOutput: Uint8Array): Promise<[Uint8Ar
     return [RK, CK, NHK];
 }
 
-export function stringToUint8Array(str: string): Uint8Array {
-    const encoder = new TextEncoder();
-    return encoder.encode(str);
-}
-
-//damit wir von pqxdh die keys zu Keypairs konvertieren koennen
-export function stringKeyPairToKeyPair(stringKeyPair: StringKeyPair): KeyPair {
-    return {
-        publicKey: stringToUint8Array(stringKeyPair.publicKey),
-        privateKey: stringToUint8Array(stringKeyPair.privateKey)
-    };
-}
