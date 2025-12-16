@@ -16,6 +16,12 @@ export interface SkippedMessageKey {
     timestamp: number;
 }
 
+export interface Headerkeys {
+    sendingHeaderKey: Uint8Array | null, //eines von beiden ist am anfang null
+    receivingHeaderKey: Uint8Array | null, // da eins durch pqxdh kommt (Je nachdem wer initiiert)
+    nextSendingHeaderKey: Uint8Array |null, //^ aber das andere kann mit dem rootkey und das ss erzeugt werden
+    nextReceivingHeaderKey: Uint8Array |null, // ^^ wenn man antwortet
+}
 /**
  * Der State des Double Ratchet Algorithmus
  *
@@ -73,50 +79,30 @@ export interface DRState {
      * Skipped Message Keys für Out-of-Order Messages
      * Signal Spec Section 3.2: "Dictionary of skipped-over message keys,
      * indexed by ratchet public key and message number"
-     * Map: "base64(DHr):N" -> SkippedMessageKey
+     *
+     * wird oben als Map implementiert
      */
     skippedMessageKeys: Map<string, SkippedMessageKey>;
 
-    // Extension: MAX_SKIP constant (Signal Spec Section 3.1)
     /**
-     * Maximale Anzahl an Skipped Message Keys (DoS-Schutz)
-     * Signal Spec Section 3.1: "MAX_SKIP constant"
-     * Empfohlen: 1000
-     */
-    maxSkippedMessageKeys?: number;
-}
-
-/**
- * Double Ratchet State mit Header Encryption
- * Signal Protocol Specification Section 4.3
- * Erweitert DRState um Header Encryption Keys
- */
-export interface DRStateHE extends DRState {
-    // Signal Spec Section 4.3: HKs, HKr (32-byte Header Keys)
-    /**
-     * Sending Header Key (HKs in Signal Spec)
      * Wird verwendet, um Header der aktuellen Sending Chain zu verschlüsseln
      * Signal Spec: Can be None (null) before first DH ratchet (Bob's initial state)
      */
     sendingHeaderKey: Uint8Array | null;
 
     /**
-     * Receiving Header Key (HKr in Signal Spec)
      * Wird verwendet, um Header der aktuellen Receiving Chain zu entschlüsseln
      */
     receivingHeaderKey: Uint8Array | null;
 
-    // Signal Spec Section 4.3: NHKs, NHKr (32-byte Next Header Keys)
     /**
-     * Next Sending Header Key (NHKs in Signal Spec)
      * Wird zur nächsten Sending Header Key nach DH Ratchet
      */
-    nextSendingHeaderKey: Uint8Array;
+    nextSendingHeaderKey: Uint8Array | null;
 
     /**
-     * Next Receiving Header Key (NHKr in Signal Spec)
      * Wird zur nächsten Receiving Header Key nach DH Ratchet
      */
-    nextReceivingHeaderKey: Uint8Array;
+    nextReceivingHeaderKey: Uint8Array | null;
 }
 

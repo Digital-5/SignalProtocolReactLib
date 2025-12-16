@@ -1,7 +1,6 @@
 import {KeyPair, deriveSharedSecret} from './CryptoUtils';
 import {DRStateHE, SkippedMessageKey} from './DR_State';
 import {HKDF} from './HKDF';
-import {StringKeyPair} from "../pqxdh/objects/StringKeyPair";
 
 export interface DRInitParamsHE {
     rootKey: Uint8Array; //SharedSecret from PQXDH
