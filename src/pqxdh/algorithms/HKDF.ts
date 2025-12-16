@@ -1,6 +1,6 @@
-import {concatenateUint8Arrays} from "./CryptoMath";
-
-const crypto = require("crypto");
+import { concatenateUint8Arrays } from "./CryptoMath";
+import { hkdf } from "@noble/hashes/hkdf.js"
+import { sha256 } from "@noble/hashes/sha2.js";
 
 export function HKDF_Func(
     input: Uint8Array
@@ -18,6 +18,6 @@ export function HKDF_Func(
     const INFO = "DIGITAL5_CURVE25519_SHA-512_CRYSTALS-KYBER-1024"
     const INFO_BYTES = new TextEncoder().encode(INFO);
     const ikm = concatenateUint8Arrays([prefix, input]);
-    return crypto.hkdfSync("sha256", ikm, salt, INFO_BYTES, 32);
+    return hkdf(sha256, ikm, salt, INFO_BYTES, 32);
 
 }

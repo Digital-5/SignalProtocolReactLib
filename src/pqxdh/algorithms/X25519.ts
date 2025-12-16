@@ -1,21 +1,31 @@
-import crypto from "node:crypto";
 import {x25519} from "@noble/curves/ed25519.js";
 
 export function generateX25519KeyPair() {
-	return crypto.generateKeyPairSync('x25519');
+    const privateKey = x25519.utils.randomSecretKey();
+
+    // For X25519 compatibility AND XEdDSA, we need to:
+    // 1. Clamp the private key as X25519 requires
+    // 2. Generate the public key using the clamped key
+
+    // X25519 clamping (RFC 7748) Chapter 5 (Page 8):
+    // - Clear bits 0, 1, 2 of the first byte
+    // - Clear bit 255 of the last byte
+    // - Set bit 254 of the last byte
+    const clampedPrivateKey = new Uint8Array(privateKey);
+    clampedPrivateKey[0] &= 248;  // Clear bottom 3 bits
+    clampedPrivateKey[31] &= 127; // Clear bit 255
+    clampedPrivateKey[31] |= 64;  // Set bit 254
+
+    // Now generate the public key using the standard X25519 method
+    // This ensures compatibility with standard X25519 DH
+    const publicKey = x25519.getPublicKey(clampedPrivateKey);
+
+    return {
+        privateKey: clampedPrivateKey,
+        publicKey
+    };
 }
 
-export function x25519PublicKeyToUint8Array(publicKey: crypto.KeyObject): Uint8Array {
-	const spkiBuf = publicKey.export({ format: 'der', type: 'spki' });
-	return new Uint8Array(spkiBuf.buffer, spkiBuf.byteOffset + spkiBuf.length - 32, 32);
-}
-
-export function x25519PrivateKeyToUint8Array(privateKey: crypto.KeyObject): Uint8Array {
-	const pkcs8Buf = privateKey.export({ format: 'der', type: 'pkcs8' });
-	return new Uint8Array(pkcs8Buf.buffer, pkcs8Buf.byteOffset + pkcs8Buf.length - 32, 32);
-}
-
-// Stole from Haidar
 export async function deriveSharedSecret(
     privateKeyBytes: Uint8Array,
     publicKeyBytes: Uint8Array
@@ -28,7 +38,9 @@ export async function deriveSharedSecret(
         throw new Error(`X25519 public key must be 32 bytes, got ${publicKeyBytes.length}`);
     }
 
-    // X25519(privateKey, publicKey) - Berechne Shared Secret
+    // X25519(privateKey, publicKey) - Use standard X25519 scalar multiplication
+    // The public key is already in Montgomery u-coordinate format
+    // The private key is the raw scalar
     const sharedSecret = x25519.getSharedSecret(privateKeyBytes, publicKeyBytes);
 
     return new Uint8Array(sharedSecret);
