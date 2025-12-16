@@ -1,6 +1,7 @@
 import {SignedKyberPublic} from "./SignedKyberPublic";
 import {generateKyberKeyPair, generateX25519Keys} from "../interfaces/CryptoInterface";
-import {randomUUID} from "node:crypto";
+import uuid from "react-native-uuid";
+
 
 export class OneTimeKeyPair {
     oneTimeKem: SignedKyberPublic
@@ -18,7 +19,7 @@ export class OneTimeKeyPair {
         const KyberKeyPair = await generateKyberKeyPair();
         this.oneTimeKem = new SignedKyberPublic(KyberKeyPair.publicKey, privateKey);
         this.oneTimeCurve = X25519KeyPair.publicKey;
-        this.identifier = randomUUID().toString();
+        this.identifier = uuid.v4();
         return {
             X25519PrivateKey: X25519KeyPair.privateKey,
             KyberPrivateKey: KyberKeyPair.privateKey,
