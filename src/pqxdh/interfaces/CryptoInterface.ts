@@ -6,18 +6,18 @@
 
 import {HexStringToUInt8Array, UInt8ArrayToHexString} from "../algorithms/CryptoMath";
 import {xeddsa_sign, xeddsa_verify} from "../algorithms/XEdDSA";
-import {generateX25519KeyPair, x25519PrivateKeyToUint8Array, x25519PublicKeyToUint8Array, deriveSharedSecret} from "../algorithms/X25519";
+import {generateX25519KeyPair, deriveSharedSecret} from "../algorithms/X25519";
 import {StringKeyPair} from "../objects/StringKeyPair";
 import {generateKemKeypair, encapsulate, decapsulate} from "../algorithms/Kyber";
 import {HKDF_Func} from "../algorithms/HKDF";
 
 export function generateX25519Keys(): StringKeyPair {
     const keyPair = generateX25519KeyPair()
-    const privateKeyHex = x25519PrivateKeyToUint8Array(keyPair.privateKey);
-    const publicKeyHex = x25519PublicKeyToUint8Array(keyPair.publicKey);
+    const privateKeyHex = UInt8ArrayToHexString(keyPair.privateKey);
+    const publicKeyHex = UInt8ArrayToHexString(keyPair.publicKey);
     return {
-        privateKey: UInt8ArrayToHexString(privateKeyHex),
-        publicKey: UInt8ArrayToHexString(publicKeyHex)
+        privateKey: privateKeyHex,
+        publicKey: publicKeyHex
     };
 }
 
