@@ -13,24 +13,38 @@ export function createDRState(
     skippedMessageKeys: Map<string, SkippedMessageKey>,
     sendingHeaderKey: string | null, //eines von beiden ist am anfang null
     receivingHeaderKey: string | null, // da eins durch pqxdh kommt (Je nachdem wer initiiert)
-    nextSendingHeaderKey: string |null, //^ aber das andere kann mit dem rootkey und das ss erzeugt werden
-    nextReceivingHeaderKey: string |null, // ^^ wenn man antwortet
+    nextSendingHeaderKey: string | null, //^ aber das andere kann mit dem rootkey und das ss erzeugt werden
+    nextReceivingHeaderKey: string | null, // ^^ wenn man antwortet
 ): DRState {
 
+    // @ts-ignore
     return {
         rootKey: stringToUint8Array(rootKey),
-        sendingChainKey : null,
+        sendingChainKey: null,
         receivingChainKey: null,
-        ourEphemeralKeyPair: convertStringsToUint8Array(ourEphemeralKeyPair),
+        ourEphemeralKeyPair: convertStringsToUint8Array(ourEphemeralKeyPair), //error kann ignoriert werden da wir sicher sind das es konvertierbar ist
         theirEphemeralPublicKey: stringToUint8Array(theirEphemeralPublicKey),
         messageNumbers,
         pn,
         skippedMessageKeys,
-        sendingHeaderKey : sendingHeaderKey ? stringToUint8Array(sendingHeaderKey) : null,
-        receivingHeaderKey : receivingHeaderKey ? stringToUint8Array(receivingHeaderKey) : null,
-        nextSendingHeaderKey : nextSendingHeaderKey ? stringToUint8Array(nextSendingHeaderKey) : null,
-        nextReceivingHeaderKey : nextReceivingHeaderKey ? stringToUint8Array(nextReceivingHeaderKey) : null,
+        HeaderKeys: {
+            sendingHeaderKey: sendingHeaderKey ? stringToUint8Array(sendingHeaderKey) : null,
+            nextSendingHeaderKey: nextSendingHeaderKey ? stringToUint8Array(nextSendingHeaderKey) : null,
+            receivingHeaderKey: receivingHeaderKey ? stringToUint8Array(receivingHeaderKey) : null,
+            nextReceivingHeaderKey: nextReceivingHeaderKey ? stringToUint8Array(nextReceivingHeaderKey) : null
+        }
     };
+}
+
+//gibt ein object als speicherbaren string zurück
+export function toJson(state: DRState): string {
+    try {
+        const objString = JSON.stringify(state);
+        return objString;
+    } catch (error) {
+        console.error(`Error: Circular reference detected: ${error}`);
+    }
+    return '';
 }
 
 //Hilfsfunktion um string in Uint8Array zu konvertieren
@@ -88,7 +102,15 @@ export function convertStringsToUint8Array<T>(obj: T): T {
     }
 }
 
-//todo cleaner für message keys älter wie 6monate löschen (sollte regelmäßig aufgerufen werden)
+export function cleanUnusedMessageKeys(state:DRState){
+    //MAX_ALTER=XXX;
+    for (const a in state) {
+        if(a.hasOwnProperty("skippedMessageKeys")){
+            //if(timestamp-jetztZeit>MAXALTER){entferne dass}
+            //todo zu echtem code umwandeln
+        }
+    }
+}
 
 //vllt ratchet stepper für die versch, situatonen (neue message, ratchet step empfangen, ratchet step senden) mit headerkey
 

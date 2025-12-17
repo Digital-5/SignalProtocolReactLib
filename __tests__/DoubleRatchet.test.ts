@@ -39,7 +39,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: headerKeys.sendingHeaderKey,
+                HeaderKey: headerKeys.sendingHeaderKey,
                 nextReceivingHeaderKey: headerKeys.nextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -59,7 +59,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: headerKeys1.sendingHeaderKey,
+                HeaderKey: headerKeys1.sendingHeaderKey,
                 nextReceivingHeaderKey: headerKeys1.nextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -70,7 +70,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey: differentRootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: headerKeys2.sendingHeaderKey,
+                HeaderKey: headerKeys2.sendingHeaderKey,
                 nextReceivingHeaderKey: headerKeys2.nextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -91,7 +91,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -101,7 +101,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -129,7 +129,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -138,7 +138,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -167,7 +167,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -176,7 +176,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -215,7 +215,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: headerKeys.sendingHeaderKey,
+                HeaderKey: headerKeys.sendingHeaderKey,
                 nextReceivingHeaderKey: headerKeys.nextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -239,7 +239,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -248,7 +248,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -268,7 +268,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -277,7 +277,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -297,7 +297,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -306,7 +306,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -329,7 +329,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -338,7 +338,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });

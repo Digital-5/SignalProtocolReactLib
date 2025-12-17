@@ -30,7 +30,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceEphemeralKeyPair,
                 theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedSendingHeaderKey,
+                HeaderKey: sharedSendingHeaderKey,
                 nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -48,7 +48,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: bobEphemeralKeyPair,
                 theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                HeaderKey: sharedNextReceivingHeaderKey,
                 nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
@@ -106,7 +106,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceEphemeralKeyPair,
                 theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedSendingHeaderKey,
+                HeaderKey: sharedSendingHeaderKey,
                 nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -115,7 +115,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: bobEphemeralKeyPair,
                 theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                HeaderKey: sharedNextReceivingHeaderKey,
                 nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
@@ -135,7 +135,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceEphemeralKeyPair,
                 theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedSendingHeaderKey,
+                HeaderKey: sharedSendingHeaderKey,
                 nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -144,7 +144,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: bobEphemeralKeyPair,
                 theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                HeaderKey: sharedNextReceivingHeaderKey,
                 nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
@@ -173,7 +173,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceEphemeralKeyPair,
                 theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedSendingHeaderKey,
+                HeaderKey: sharedSendingHeaderKey,
                 nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -182,7 +182,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: bobEphemeralKeyPair,
                 theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                HeaderKey: sharedNextReceivingHeaderKey,
                 nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
@@ -222,7 +222,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceEphemeralKeyPair,
                 theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedSendingHeaderKey,
+                HeaderKey: sharedSendingHeaderKey,
                 nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -231,7 +231,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: bobEphemeralKeyPair,
                 theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                HeaderKey: sharedNextReceivingHeaderKey,
                 nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
@@ -250,7 +250,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceEphemeralKeyPair,
                 theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedSendingHeaderKey,
+                HeaderKey: sharedSendingHeaderKey,
                 nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -259,7 +259,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: bobEphemeralKeyPair,
                 theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                HeaderKey: sharedNextReceivingHeaderKey,
                 nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });
@@ -277,7 +277,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceEphemeralKeyPair,
                 theirRatchetPublicKey: bobEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedSendingHeaderKey,
+                HeaderKey: sharedSendingHeaderKey,
                 nextReceivingHeaderKey: sharedNextReceivingHeaderKey,
                 isInitiator: true
             });
@@ -286,7 +286,7 @@ describe('Header Encryption (Section 4)', () => {
                 rootKey,
                 ourRatchetKeyPair: bobEphemeralKeyPair,
                 theirRatchetPublicKey: aliceEphemeralKeyPair.publicKey,
-                sendingHeaderKey: sharedNextReceivingHeaderKey,
+                HeaderKey: sharedNextReceivingHeaderKey,
                 nextReceivingHeaderKey: sharedSendingHeaderKey,
                 isInitiator: false
             });

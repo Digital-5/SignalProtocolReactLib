@@ -4,8 +4,7 @@
  * https://signal.org/docs/specifications/doubleratchet/
  */
 
-import {DRStateHE} from './DR_State';
-import {MessageHeader} from './DR_Ratchet';
+import {DRState} from './DR_State'; //todo update to new drstate
 import {encryptHeader, decryptHeader} from './HeaderEncryption';
 import {HKDF} from './HKDF';
 import {deriveSharedSecret, generateKeyPair} from './CryptoUtils';
@@ -22,11 +21,23 @@ export interface RatchetMessageHE {
 }
 
 /**
+ * Message Header (Signal Protocol kompatibel)
+ */
+export interface MessageHeader {
+    /** DH Ratchet Public Key */
+    dh: Uint8Array;
+    /** Previous Chain Length (Anzahl Nachrichten in vorheriger Sending Chain) */
+    pn: number;
+    /** Message Number in aktueller Chain */
+    n: number;
+}
+
+/**
  * Leitet einen Message Key aus einem Chain Key ab
  * Signal Spec: KDF_CK(ck) - If ck is None this function must fail
  */
 async function deriveMessageKey(chainKey: Uint8Array | null): Promise<[Uint8Array, Uint8Array]> {
-    if (!chainKey) {
+    if (!chainKey) { //da chainkey null ist falsch, z.b if(2) ist immer true!
         throw new Error('Cannot derive message key: chain key is null');
     }
     const hkdf = new HKDF('SHA-512');
@@ -128,10 +139,10 @@ async function decryptMessageContent(
  * @returns Tuple mit [verschlüsselte Nachricht, neuer State]
  */
 export async function ratchetEncryptHE(
-    state: DRStateHE,
+    state: DRState,
     plaintext: Uint8Array,
     associatedData?: Uint8Array
-): Promise<[RatchetMessageHE, DRStateHE]> {
+): Promise<[RatchetMessageHE, DRState]> {
     // Signal Spec: Validiere dass CKs nicht None ist
     if (!state.sendingChainKey) {
         throw new Error('Cannot encrypt: sendingChainKey is not initialized. Perform DH ratchet first.');
@@ -148,16 +159,16 @@ export async function ratchetEncryptHE(
     };
 
     // Signal Spec: enc_header = HENCRYPT(state.HKs, header)
-    if (!state.sendingHeaderKey) {
+    if (!state.HeaderKeys.sendingHeaderKey) {
         throw new Error('Cannot encrypt header: sendingHeaderKey is not initialized');
     }
-    const encryptedHeader = await encryptHeader(state.sendingHeaderKey, header);
+    const encryptedHeader = await encryptHeader(state.HeaderKeys.sendingHeaderKey, header);
 
     // Signal Spec: ENCRYPT(mk, plaintext, CONCAT(AD, enc_header))
     const ciphertext = await encryptMessageContent(messageKey, plaintext, encryptedHeader, associatedData);
 
     // Signal Spec: state.Ns += 1
-    const newState: DRStateHE = {
+    const newState: DRState = {
         ...state,
         sendingChainKey: newSendingChainKey,
         messageNumbers: {
@@ -179,10 +190,10 @@ export async function ratchetEncryptHE(
  * @returns Tuple mit [entschlüsselte Nachricht, neuer State]
  */
 export async function ratchetDecryptHE(
-    state: DRStateHE,
+    state: DRState,
     message: RatchetMessageHE,
     associatedData?: Uint8Array
-): Promise<[Uint8Array, DRStateHE]> {
+): Promise<[Uint8Array, DRState]> {
     // Signal Spec: plaintext = TrySkippedMessageKeysHE(state, enc_header, ciphertext, AD)
     const skippedResult = await trySkippedMessageKeysHE(state, message, associatedData);
     if (skippedResult) {
@@ -210,7 +221,7 @@ export async function ratchetDecryptHE(
     const [newReceivingChainKey, messageKey] = await deriveMessageKey(state.receivingChainKey);
 
     // Signal Spec: state.Nr += 1
-    const newState: DRStateHE = {
+    const newState: DRState = {
         ...state,
         receivingChainKey: newReceivingChainKey,
         messageNumbers: {
@@ -229,17 +240,17 @@ export async function ratchetDecryptHE(
  * Signal Spec: DecryptHeader - Versuche Header mit HKr oder NHKr zu entschlüsseln
  */
 async function decryptHeaderHE(
-    state: DRStateHE,
+    state: DRState,
     encryptedHeader: Uint8Array
 ): Promise<{ header: MessageHeader; dhRatchet: boolean }> {
     // Signal Spec: header = HDECRYPT(state.HKr, enc_header)
-    let header = await decryptHeader(state.receivingHeaderKey, encryptedHeader);
+    let header = await decryptHeader(state.HeaderKeys.receivingHeaderKey, encryptedHeader);
     if (header) {
         return {header, dhRatchet: false};
     }
 
     // Signal Spec: header = HDECRYPT(state.NHKr, enc_header)
-    header = await decryptHeader(state.nextReceivingHeaderKey, encryptedHeader);
+    header = await decryptHeader(state.HeaderKeys.receivingNextHeaderKey, encryptedHeader);
     if (header) {
         return {header, dhRatchet: true};
     }
@@ -250,15 +261,15 @@ async function decryptHeaderHE(
 /**
  * Signal Spec Section 4.6: DHRatchetHE
  */
-async function performDHRatchetHE(state: DRStateHE, header: MessageHeader): Promise<DRStateHE> {
+async function performDHRatchetHE(state: DRState, header: MessageHeader): Promise<DRState> {
     const hkdf = new HKDF('SHA-512');
 
     // Signal Spec: state.PN = state.Ns
     const pn = state.messageNumbers.sending;
 
     // Signal Spec: state.HKs = state.NHKs; state.HKr = state.NHKr
-    const sendingHeaderKey = state.nextSendingHeaderKey;
-    const receivingHeaderKey = state.nextReceivingHeaderKey;
+    const sendingHeaderKey = state.HeaderKeys.sendingNextHeaderKey;
+    const receivingHeaderKey = state.HeaderKeys.receivingNextHeaderKey;
 
     // Signal Spec: state.DHRr = header.dh
     const theirPublicKey = header.dh;
@@ -298,10 +309,10 @@ async function performDHRatchetHE(state: DRStateHE, header: MessageHeader): Prom
  * Versucht, eine Nachricht mit gespeicherten skipped message keys zu entschlüsseln
  */
 async function trySkippedMessageKeysHE(
-    state: DRStateHE,
+    state: DRState,
     message: RatchetMessageHE,
     associatedData?: Uint8Array
-): Promise<[Uint8Array, DRStateHE] | null> {
+): Promise<[Uint8Array, DRState] | null> {
     // Signal Spec: Versuche Header mit allen gespeicherten Header Keys zu entschlüsseln
     // Für jeden skipped message key, versuche den Header zu entschlüsseln
     for (const [keyId, skippedKey] of state.skippedMessageKeys.entries()) {
@@ -309,11 +320,11 @@ async function trySkippedMessageKeysHE(
         // Wir müssen den Header mit allen möglichen Header Keys entschlüsseln
 
         // Versuche mit aktuellem Header Key
-        let header = await decryptHeader(state.receivingHeaderKey, message.encryptedHeader);
+        let header = await decryptHeader(state.HeaderKeys.receivingHeaderKey, message.encryptedHeader);
 
         // Versuche mit Next Header Key falls nicht erfolgreich
         if (!header) {
-            header = await decryptHeader(state.nextReceivingHeaderKey, message.encryptedHeader);
+            header = await decryptHeader(state.HeaderKeys.receivingNextHeaderKey, message.encryptedHeader);
         }
 
         if (header) {
@@ -335,7 +346,7 @@ async function trySkippedMessageKeysHE(
                     const newSkippedKeys = new Map(state.skippedMessageKeys);
                     newSkippedKeys.delete(keyId);
 
-                    const newState: DRStateHE = {
+                    const newState: DRState = {
                         ...state,
                         skippedMessageKeys: newSkippedKeys
                     };
@@ -343,7 +354,6 @@ async function trySkippedMessageKeysHE(
                     return [plaintext, newState];
                 } catch {
                     // Entschlüsselung fehlgeschlagen, versuche nächsten Key
-                    continue;
                 }
             }
         }
@@ -355,7 +365,7 @@ async function trySkippedMessageKeysHE(
 /**
  * Signal Spec: SkipMessageKeysHE
  */
-async function skipMessageKeysHE(state: DRStateHE, until: number): Promise<DRStateHE> {
+async function skipMessageKeysHE(state: DRState, until: number): Promise<DRState> {
     // Signal Spec: If nothing to skip, return
     if (state.messageNumbers.receiving >= until) {
         return state;
@@ -366,7 +376,7 @@ async function skipMessageKeysHE(state: DRStateHE, until: number): Promise<DRSta
         return state;
     }
 
-    const maxSkip = state.maxSkippedMessageKeys || 1000;
+    const maxSkip = 1000;
 
     if (state.messageNumbers.receiving + maxSkip < until) {
         throw new Error(`Too many skipped messages: ${until - state.messageNumbers.receiving} > ${maxSkip}`);

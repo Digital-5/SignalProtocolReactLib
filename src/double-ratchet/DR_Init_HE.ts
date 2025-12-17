@@ -1,13 +1,14 @@
 import {KeyPair, deriveSharedSecret} from './CryptoUtils';
-import {DRStateHE, SkippedMessageKey} from './DR_State';
+import {DRState, SkippedMessageKey} from './DR_State';
 import {HKDF} from './HKDF';
 
+//Das bekomme ich von PQXDH
 export interface DRInitParamsHE {
-    rootKey: Uint8Array; //SharedSecret from PQXDH
+    rootKey: Uint8Array; //SharedSecret from PQXDH 32 bit
     ourRatchetKeyPair: KeyPair; // One-Time Keypair used in PQXDH X25519
     theirRatchetPublicKey: Uint8Array; // Ephemeral key from sender PQXDH
-    sendingHeaderKey: Uint8Array;
-    nextReceivingHeaderKey: Uint8Array;
+    HeaderKey: Uint8Array; // ist ein initial ss todo 128 bytes von pqxdh?
+    nextHeaderKey: Uint8Array; //ist ein inital ss 128 bytes
     isInitiator: boolean;
 }
 
@@ -15,7 +16,7 @@ export interface DRInitParamsHE {
  * Initialisiert einen Double Ratchet State mit Header Encryption
  * Signal Protocol Specification Section 4.4 als ob das jemand nachschlagen wuerde...
  */
-export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRStateHE> {
+export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRState> {
     const skippedKeys = new Map<string, SkippedMessageKey>();
 
     if (params.isInitiator) {
@@ -26,9 +27,9 @@ export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRStateHE> {
             params.theirRatchetPublicKey
         );
 
-        const [RK, CKs, NHKs] = await KDF_RK_HE(params.rootKey, dhOutput);
+        const [RK, CKs, NHKs] = await KDF_RK_HE(params.rootKey, dhOutput); // gibt den rootkey chainkey und nextsendingheaderkey zurück
 
-        const state: DRStateHE = {
+        const state: DRState = { //todo update!
             rootKey: RK,
             sendingChainKey: CKs,
             receivingChainKey: null, // Signal Spec: CKr = None (wird beim ersten Empfang gesetzt)
@@ -40,10 +41,12 @@ export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRStateHE> {
             },
             pn: 0,
             skippedMessageKeys: skippedKeys,
-            sendingHeaderKey: params.sendingHeaderKey,
-            receivingHeaderKey: null,
-            nextSendingHeaderKey: NHKs,
-            nextReceivingHeaderKey: params.nextReceivingHeaderKey
+            HeaderKeys: {
+                sendingHeaderKey: params.HeaderKey,
+                sendingNextHeaderKey: params.nextHeaderKey,
+                receivingHeaderKey: null, //null da sie erst wenn das gegenüber antwortet es braucht
+                receivingNextHeaderKey: null
+            }
         };
 
         return state;
@@ -51,7 +54,7 @@ export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRStateHE> {
         // Bob initialisiert - Signal Spec Section 4.4 RatchetInitBobHE
         // Signal Spec: Bob's NHKr = Alice's HKs (wird als nextReceivingHeaderKey übergeben)
         //             Bob's NHKs = shared_nhkb (wird als sendingHeaderKey übergeben)
-        const state: DRStateHE = {
+        const state: DRState = {
             rootKey: params.rootKey,
             sendingChainKey: null, // Signal Spec: CKs = None (wird beim ersten DH Ratchet Step gesetzt)
             receivingChainKey: null, // Signal Spec: CKr = None (wird beim ersten DH Ratchet Step gesetzt)
@@ -63,10 +66,12 @@ export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRStateHE> {
             },
             pn: 0,
             skippedMessageKeys: skippedKeys,
-            sendingHeaderKey: null, // Signal Spec: HKs = None (wird beim ersten DH Ratchet Step gesetzt)
-            receivingHeaderKey: null, // Signal Spec: HKr = None
-            nextSendingHeaderKey: params.sendingHeaderKey, // NHKs = shared_nhkb
-            nextReceivingHeaderKey: params.nextReceivingHeaderKey // NHKr = shared_hka (Alice's HKs)
+            HeaderKeys: {
+                sendingHeaderKey: null, // Signal Spec: HKs = None (wird beim ersten DH Ratchet Step gesetzt)
+                nextSendingHeaderKey: params.HeaderKey, // NHKs = shared_nhkb
+                receivingHeaderKey: null, // Signal Spec: HKr = None todo rausfinden warum die beiden leer sind
+                nextReceivingHeaderKey: params.nextHeaderKey // NHKr = shared_hka (Alice's HKs)
+            }
         };
 
         return state;
@@ -81,13 +86,13 @@ async function KDF_RK_HE(rk: Uint8Array, dhOutput: Uint8Array): Promise<[Uint8Ar
     const derived = await hkdf.deriveKeys(
         rk, // salt = root key
         dhOutput, // input key material = DH output
-        96 // 3 x 32 bytes = RK + CK + NHK
+        192// 2 x 32 bytes + 128 bytes = RK + CK + NHK
     );
 
     // Teile in 3 x 32 Bytes auf
     const RK = derived.slice(0, 32);
     const CK = derived.slice(32, 64);
-    const NHK = derived.slice(64, 96);
+    const NHK = derived.slice(64, 192);
 
     return [RK, CK, NHK];
 }

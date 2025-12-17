@@ -32,7 +32,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -41,7 +41,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -72,7 +72,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -81,7 +81,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -126,7 +126,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -135,7 +135,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -175,7 +175,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -184,7 +184,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -228,7 +228,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -237,7 +237,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -281,7 +281,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -290,7 +290,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -311,7 +311,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -320,7 +320,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -353,7 +353,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -362,7 +362,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -400,7 +400,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceRatchetKeyPair,
                 theirRatchetPublicKey: bobRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -409,7 +409,7 @@ describe('Out-of-Order Messages mit Header Encryption', () => {
                 rootKey,
                 ourRatchetKeyPair: bobRatchetKeyPair,
                 theirRatchetPublicKey: aliceRatchetKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });

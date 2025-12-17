@@ -127,7 +127,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -136,7 +136,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -164,7 +164,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -173,7 +173,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -203,7 +203,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -212,7 +212,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -249,7 +249,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -258,7 +258,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -291,7 +291,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -300,7 +300,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -332,7 +332,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -341,7 +341,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -376,7 +376,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -385,7 +385,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -411,7 +411,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -420,7 +420,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -446,7 +446,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -455,7 +455,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
@@ -478,7 +478,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: aliceKeyPair,
                 theirRatchetPublicKey: bobKeyPair.publicKey,
-                sendingHeaderKey: sharedHKA,
+                HeaderKey: sharedHKA,
                 nextReceivingHeaderKey: sharedNHKB,
                 isInitiator: true
             });
@@ -487,7 +487,7 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
                 rootKey,
                 ourRatchetKeyPair: bobKeyPair,
                 theirRatchetPublicKey: aliceKeyPair.publicKey,
-                sendingHeaderKey: sharedNHKB,
+                HeaderKey: sharedNHKB,
                 nextReceivingHeaderKey: sharedHKA,
                 isInitiator: false
             });
