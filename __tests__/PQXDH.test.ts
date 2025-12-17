@@ -52,21 +52,19 @@ describe('PQXDH_Tests', () => {
             const aliceEphemeral = generateX25519Keys();
             const bobIdentityKeys = generateX25519Keys();
             const bobEphemeral = generateX25519Keys();
-            const bobOneTimeKeys = generateX25519Keys();
-            const aliceDH1 = await stringDiffieHellman(aliceIdentityKeys.privateKey, bobIdentityKeys.publicKey);
-            const aliceDH2 = await stringDiffieHellman(aliceEphemeral.privateKey, bobIdentityKeys.publicKey);
-            const aliceDH3 = await stringDiffieHellman(aliceEphemeral.privateKey, bobEphemeral.publicKey);
-            const aliceDH4 = await stringDiffieHellman(aliceEphemeral.privateKey, bobOneTimeKeys.publicKey);
-            const bobDH1 = await stringDiffieHellman(bobIdentityKeys.privateKey, aliceIdentityKeys.publicKey);
-            const bobDH2 = await stringDiffieHellman(bobIdentityKeys.privateKey, aliceEphemeral.publicKey);
-            const bobDH3 = await stringDiffieHellman(bobEphemeral.privateKey, aliceEphemeral.publicKey);
-            const bobDH4 = await stringDiffieHellman(bobOneTimeKeys.privateKey, aliceEphemeral.publicKey);
-            const aliceConcat = aliceDH1 + aliceDH2 + aliceDH3 + aliceDH4;
-            const bobConcat = bobDH1 + bobDH2 + bobDH3 + bobDH4;
-            expect(aliceDH1).toEqual(bobDH1);
-            expect(aliceDH2).toEqual(bobDH2);
-            expect(aliceDH3).toEqual(bobDH3);
-            expect(aliceDH4).toEqual(bobDH4);
+
+            const aliceDH1 = stringDiffieHellman(aliceKeys.privateKey, bobKeys.publicKey);
+            const aliceDH2 = stringDiffieHellman(aliceEphemeral.privateKey, bobKeys.publicKey);
+            const aliceDH3 = stringDiffieHellman(aliceKeys.privateKey, bobEphemeral.publicKey);
+            const aliceDH4 = stringDiffieHellman(aliceEphemeral.privateKey, bobEphemeral.publicKey);
+            // Bob's DH Operationen müssen in der gleichen Reihenfolge sein (DH ist kommutativ)
+            const bobDH1 = stringDiffieHellman(bobKeys.privateKey, aliceKeys.publicKey);
+            const bobDH2 = stringDiffieHellman(bobKeys.privateKey, aliceEphemeral.publicKey); // Korrigiert!
+            const bobDH3 = stringDiffieHellman(bobEphemeral.privateKey, aliceKeys.publicKey);
+            const bobDH4 = stringDiffieHellman(bobEphemeral.privateKey, aliceEphemeral.publicKey);
+            const aliceConcat = (await aliceDH1) + (await aliceDH2) + (await aliceDH3) + (await aliceDH4);
+            const bobConcat = (await bobDH1) + (await bobDH2) + (await bobDH3) + (await bobDH4);
+
             const dh1 = stringHKDF(aliceConcat);
             const dh2 = stringHKDF(bobConcat);
             expect(await dh1).toEqual(await dh2);

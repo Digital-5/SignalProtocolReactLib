@@ -4,7 +4,7 @@
  * https://signal.org/docs/specifications/doubleratchet/
  */
 
-import {MessageHeader} from './DR_Ratchet';
+import {MessageHeader} from './DR_Interfaces';
 
 /**
  * Verschlüsselt einen Message Header mit AES-256-GCM
