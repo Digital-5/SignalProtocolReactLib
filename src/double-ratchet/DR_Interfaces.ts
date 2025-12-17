@@ -12,17 +12,41 @@
 export interface SkippedMessageKey {
     /** Der Message Key für die Entschlüsselung */
     messageKey: Uint8Array;
-    /** Zeitstempel, wann dieser Key erstellt wurde (für Cleanup) */
+    /** Zeitstempel, wann dieser Key erstellt wurde (für Cleanup) in ms (Date.now) */
     timestamp: number;
 }
 
 export interface Headerkeys {
-    sendingHeaderKey: Uint8Array |null, //selber gen sonst null
-    sendingNextHeaderKey: Uint8Array |null, //^
+    sendingHeaderKey: Uint8Array | null, //selber gen sonst null
+    sendingNextHeaderKey: Uint8Array | null, //^
     //später braucht man für jede Seite HK und NHK:
-    receivingHeaderKey: Uint8Array |null, // bekomme ich von pqxdh oder ich berechne es selber
-    receivingNextHeaderKey: Uint8Array|null //^sollte nie null sein
+    receivingHeaderKey: Uint8Array | null, // bekomme ich von pqxdh oder ich berechne es selber
+    receivingNextHeaderKey: Uint8Array | null //^sollte nie null sein
 }
+
+/**
+ * Encrypted Message mit Header Encryption
+ * Signal Spec Section 4: Encrypted Header + Ciphertext
+ */
+export interface RatchetMessageHE {
+    /** Verschlüsselter Header */
+    encryptedHeader: Uint8Array;
+    /** Die verschlüsselte Nachricht */
+    ciphertext: Uint8Array;
+}
+
+/**
+ * Message Header (Signal Protocol kompatibel)
+ */
+export interface MessageHeader {
+    /** DH Ratchet Public Key */
+    dh: Uint8Array;
+    /** Previous Chain Length (Anzahl Nachrichten in vorheriger Sending Chain) */
+    pn: number;
+    /** Message Number in aktueller Chain */
+    n: number;
+}
+
 /**
  * Der State des Double Ratchet Algorithmus
  *
@@ -73,10 +97,10 @@ export interface DRState {
 
     /**
      * Skipped Message Keys für Out-of-Order Messages
-     * Signal Spec Section 3.2: "Dictionary of skipped-over message keys,
-     * indexed by ratchet public key and message number"
      *
-     * SkippedMessageKey wird oben als Map implementiert
+     * string = index by ratchet public key and message number
+     *
+     * SkippedMessageKey wird oben als interface implementiert
      */
     skippedMessageKeys: Map<string, SkippedMessageKey>;
 

@@ -47,8 +47,11 @@ describe('Double Ratchet mit Header Encryption', () => {
             expect(aliceState).toBeDefined();
             expect(aliceState.rootKey).toBeInstanceOf(Uint8Array);
             expect(aliceState.sendingChainKey).toBeInstanceOf(Uint8Array);
-            expect(aliceState.sendingHeaderKey).toEqual(headerKeys.sendingHeaderKey);
-            expect(aliceState.nextReceivingHeaderKey).toEqual(headerKeys.nextReceivingHeaderKey);
+            expect(aliceState.HeaderKeys.sendingHeaderKey).toEqual(headerKeys.sendingHeaderKey);
+            // sendingNextHeaderKey wird vom KDF_RK_HE berechnet, nicht vom Input übernommen
+            expect(aliceState.HeaderKeys.sendingNextHeaderKey).toBeInstanceOf(Uint8Array);
+            expect(aliceState.HeaderKeys.sendingNextHeaderKey?.length).toBe(32);
+            expect(aliceState.HeaderKeys.receivingNextHeaderKey).toEqual(headerKeys.nextReceivingHeaderKey);
             expect(aliceState.messageNumbers.sending).toBe(0);
             expect(aliceState.messageNumbers.receiving).toBe(0);
         });

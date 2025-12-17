@@ -1,5 +1,5 @@
 import {KeyPair, deriveSharedSecret} from './CryptoUtils';
-import {DRState, SkippedMessageKey} from './DR_State';
+import {DRState, SkippedMessageKey} from './DR_Interfaces';
 import {HKDF} from './HKDF';
 
 //Das bekomme ich von PQXDH
@@ -7,8 +7,8 @@ export interface DRInitParamsHE {
     rootKey: Uint8Array; //SharedSecret from PQXDH 32 bit
     ourRatchetKeyPair: KeyPair; // One-Time Keypair used in PQXDH X25519
     theirRatchetPublicKey: Uint8Array; // Ephemeral key from sender PQXDH
-    HeaderKey: Uint8Array; // ist ein initial ss todo 128 bytes von pqxdh?
-    nextHeaderKey: Uint8Array; //ist ein inital ss 128 bytes
+    HeaderKey: Uint8Array; // Initial shared secret (32 bytes) von PQXDH - für Initiator: sendingHeaderKey, für Responder: nextSendingHeaderKey
+    nextReceivingHeaderKey: Uint8Array; // Initial shared secret (32 bytes) von PQXDH - für beide: der receiving header key
     isInitiator: boolean;
 }
 
@@ -43,9 +43,9 @@ export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRState> {
             skippedMessageKeys: skippedKeys,
             HeaderKeys: {
                 sendingHeaderKey: params.HeaderKey,
-                sendingNextHeaderKey: params.nextHeaderKey,
+                sendingNextHeaderKey: NHKs,
                 receivingHeaderKey: null, //null da sie erst wenn das gegenüber antwortet es braucht
-                receivingNextHeaderKey: null
+                receivingNextHeaderKey: params.nextReceivingHeaderKey,
             }
         };
 
@@ -68,9 +68,9 @@ export async function DR_Init_HE(params: DRInitParamsHE): Promise<DRState> {
             skippedMessageKeys: skippedKeys,
             HeaderKeys: {
                 sendingHeaderKey: null, // Signal Spec: HKs = None (wird beim ersten DH Ratchet Step gesetzt)
-                nextSendingHeaderKey: params.HeaderKey, // NHKs = shared_nhkb
+                sendingNextHeaderKey: params.HeaderKey, // NHKs = shared_nhkb
                 receivingHeaderKey: null, // Signal Spec: HKr = None todo rausfinden warum die beiden leer sind
-                nextReceivingHeaderKey: params.nextHeaderKey // NHKr = shared_hka (Alice's HKs)
+                receivingNextHeaderKey: params.nextReceivingHeaderKey // NHKr = shared_hka (Alice's HKs)
             }
         };
 
@@ -86,13 +86,13 @@ async function KDF_RK_HE(rk: Uint8Array, dhOutput: Uint8Array): Promise<[Uint8Ar
     const derived = await hkdf.deriveKeys(
         rk, // salt = root key
         dhOutput, // input key material = DH output
-        192// 2 x 32 bytes + 128 bytes = RK + CK + NHK
+        96 // 3 x 32 bytes = RK (32) + CK (32) + NHK (32) für AES-256-GCM
     );
 
     // Teile in 3 x 32 Bytes auf
     const RK = derived.slice(0, 32);
     const CK = derived.slice(32, 64);
-    const NHK = derived.slice(64, 192);
+    const NHK = derived.slice(64, 96); // 32 Bytes für AES-256-GCM Header Encryption
 
     return [RK, CK, NHK];
 }

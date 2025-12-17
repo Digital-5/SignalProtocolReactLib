@@ -1,4 +1,4 @@
-import {DRState, SkippedMessageKey} from "./DR_State";
+import {DRState, SkippedMessageKey} from "./DR_Interfaces";
 
 // erstellt ein DR_state und nimmt string keys für unser schlüsselpaar an
 
@@ -29,9 +29,9 @@ export function createDRState(
         skippedMessageKeys,
         HeaderKeys: {
             sendingHeaderKey: sendingHeaderKey ? stringToUint8Array(sendingHeaderKey) : null,
-            nextSendingHeaderKey: nextSendingHeaderKey ? stringToUint8Array(nextSendingHeaderKey) : null,
+            sendingNextHeaderKey: nextSendingHeaderKey ? stringToUint8Array(nextSendingHeaderKey) : null,
             receivingHeaderKey: receivingHeaderKey ? stringToUint8Array(receivingHeaderKey) : null,
-            nextReceivingHeaderKey: nextReceivingHeaderKey ? stringToUint8Array(nextReceivingHeaderKey) : null
+            receivingNextHeaderKey: nextReceivingHeaderKey ? stringToUint8Array(nextReceivingHeaderKey) : null
         }
     };
 }
@@ -39,8 +39,7 @@ export function createDRState(
 //gibt ein object als speicherbaren string zurück
 export function toJson(state: DRState): string {
     try {
-        const objString = JSON.stringify(state);
-        return objString;
+        return JSON.stringify(state);
     } catch (error) {
         console.error(`Error: Circular reference detected: ${error}`);
     }
@@ -70,6 +69,7 @@ export function convertStringsToUint8Array<T>(obj: T): T {
 
         case 'object':
             // Uint8Array bereits vorhanden → nicht ändern
+        {
             if (obj instanceof Uint8Array) {
                 return obj;
             }
@@ -96,24 +96,22 @@ export function convertStringsToUint8Array<T>(obj: T): T {
                 }
             }
             return result;
+        }
 
         default:
             return obj;
     }
 }
 
-export function cleanUnusedMessageKeys(state:DRState){
-    //MAX_ALTER=XXX;
-    for (const a in state) {
-        if(a.hasOwnProperty("skippedMessageKeys")){
-            //if(timestamp-jetztZeit>MAXALTER){entferne dass}
-            //todo zu echtem code umwandeln
+export function cleanUnusedMessageKeys(state: DRState) {
+    const MAX_AGE = 1000 * 60 * 60 * 24 * 7 * 4; //ein monat in ms
+    const jetztZeit = Date.now();
+    for (const [keyId, skippedKey] of state.skippedMessageKeys.entries()) {
+        if (jetztZeit - skippedKey.timestamp> MAX_AGE) {
+            state.skippedMessageKeys.delete(keyId);
         }
     }
 }
 
-//vllt ratchet stepper für die versch, situatonen (neue message, ratchet step empfangen, ratchet step senden) mit headerkey
+//für ratchet encryption und decryption siehe dr_ratchet_he
 
-//todo mit ratchet stepper encryptor und decryptor verbinden
-
-//todo headerencryptor und decryptor (braucht dr state)

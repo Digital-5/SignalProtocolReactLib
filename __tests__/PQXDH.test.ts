@@ -49,9 +49,10 @@ describe('PQXDH_Tests', () => {
             const aliceDH2 = stringDiffieHellman(aliceEphemeral.privateKey, bobKeys.publicKey);
             const aliceDH3 = stringDiffieHellman(aliceKeys.privateKey, bobEphemeral.publicKey);
             const aliceDH4 = stringDiffieHellman(aliceEphemeral.privateKey, bobEphemeral.publicKey);
+            // Bob's DH Operationen müssen in der gleichen Reihenfolge sein (DH ist kommutativ)
             const bobDH1 = stringDiffieHellman(bobKeys.privateKey, aliceKeys.publicKey);
-            const bobDH2 = stringDiffieHellman(bobEphemeral.privateKey, aliceKeys.publicKey);
-            const bobDH3 = stringDiffieHellman(bobKeys.privateKey, aliceEphemeral.publicKey);
+            const bobDH2 = stringDiffieHellman(bobKeys.privateKey, aliceEphemeral.publicKey); // Korrigiert!
+            const bobDH3 = stringDiffieHellman(bobEphemeral.privateKey, aliceKeys.publicKey);
             const bobDH4 = stringDiffieHellman(bobEphemeral.privateKey, aliceEphemeral.publicKey);
             const aliceConcat = (await aliceDH1) + (await aliceDH2) + (await aliceDH3) + (await aliceDH4);
             const bobConcat = (await bobDH1) + (await bobDH2) + (await bobDH3) + (await bobDH4);

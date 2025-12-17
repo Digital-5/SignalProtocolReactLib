@@ -6,7 +6,7 @@
 import { DR_Init_HE } from '../src/double-ratchet/DR_Init_HE';
 import { ratchetEncryptHE, ratchetDecryptHE } from '../src/double-ratchet/DR_Ratchet_HE';
 import { generateKeyPair } from '../src/double-ratchet/CryptoUtils';
-import { DRStateHE } from '../src/double-ratchet/DR_State';
+import { DRState } from '../src/double-ratchet/DR_Interfaces';
 import { RatchetMessageHE } from '../src/double-ratchet/DR_Ratchet_HE';
 
 describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
@@ -59,11 +59,11 @@ describe('Lokale Messaging mit Header Encryption - Alice und Bob', () => {
      * Simuliert eine vollständige Session zwischen Alice und Bob
      */
     class MessagingSession {
-        private aliceState: DRStateHE;
-        private bobState: DRStateHE;
+        private aliceState: DRState;
+        private bobState: DRState;
         private messageQueue: LocalMessageQueue;
 
-        constructor(aliceState: DRStateHE, bobState: DRStateHE) {
+        constructor(aliceState: DRState, bobState: DRState) {
             this.aliceState = aliceState;
             this.bobState = bobState;
             this.messageQueue = new LocalMessageQueue();

@@ -4,40 +4,24 @@
  * https://signal.org/docs/specifications/doubleratchet/
  */
 
-import {DRState} from './DR_State'; //todo update to new drstate
+import {DRState, MessageHeader, RatchetMessageHE} from './DR_Interfaces';
 import {encryptHeader, decryptHeader} from './HeaderEncryption';
 import {HKDF} from './HKDF';
 import {deriveSharedSecret, generateKeyPair} from './CryptoUtils';
 
-/**
- * Encrypted Message mit Header Encryption
- * Signal Spec Section 4: Encrypted Header + Ciphertext
- */
-export interface RatchetMessageHE {
-    /** Verschlüsselter Header */
-    encryptedHeader: Uint8Array;
-    /** Die verschlüsselte Nachricht */
-    ciphertext: Uint8Array;
-}
+
 
 /**
- * Message Header (Signal Protocol kompatibel)
- */
-export interface MessageHeader {
-    /** DH Ratchet Public Key */
-    dh: Uint8Array;
-    /** Previous Chain Length (Anzahl Nachrichten in vorheriger Sending Chain) */
-    pn: number;
-    /** Message Number in aktueller Chain */
-    n: number;
-}
-
-/**
- * Leitet einen Message Key aus einem Chain Key ab
- * Signal Spec: KDF_CK(ck) - If ck is None this function must fail
+ * Leitet einen Message Key aus einem Chain Key mittels HKDF ab (KDF_CK)
+ *
+ * @param chainKey - Der aktuelle Chain Key (32 Bytes), darf nicht null sein
+ * @returns Tuple aus [neuer Chain Key, Message Key] - jeweils 32 Bytes
+ * @throws {Error} Wenn chainKey null ist
+ *
+ * @see https://signal.org/docs/specifications/doubleratchet/#kdf-chains
  */
 async function deriveMessageKey(chainKey: Uint8Array | null): Promise<[Uint8Array, Uint8Array]> {
-    if (!chainKey) { //da chainkey null ist falsch, z.b if(2) ist immer true!
+    if (!chainKey) {
         throw new Error('Cannot derive message key: chain key is null');
     }
     const hkdf = new HKDF('SHA-512');
@@ -52,7 +36,17 @@ async function deriveMessageKey(chainKey: Uint8Array | null): Promise<[Uint8Arra
 }
 
 /**
- * Verschlüsselt eine Nachricht mit AES-256-GCM
+ * Verschlüsselt den Nachrichteninhalt mit AES-256-GCM (AEAD)
+ *
+ * @param messageKey - Der Message Key für die Verschlüsselung (32 Bytes)
+ * @param plaintext - Die zu verschlüsselnde Nachricht
+ * @param encryptedHeader - Der verschlüsselte Header (wird in AD eingebunden)
+ * @param associatedData - server verfication token?
+ * @returns Verschlüsselter Ciphertext (IV + verschlüsselte Daten)
+ *
+ * @remarks
+ * Die Associated Data (AD) wird konstruiert als: CONCAT(associatedData, encryptedHeader)
+ * Dies garantiert Authentifizierung sowohl der zusätzlichen Daten als auch des Headers
  */
 async function encryptMessageContent(
     messageKey: Uint8Array,
@@ -70,7 +64,7 @@ async function encryptMessageContent(
         ['encrypt']
     );
 
-    // Signal Spec: CONCAT(AD, enc_header)
+    // Konstruiere Associated Data: CONCAT(AD, enc_header)
     const ad = associatedData
         ? concatArrays(associatedData, encryptedHeader)
         : encryptedHeader;
@@ -92,7 +86,17 @@ async function encryptMessageContent(
 }
 
 /**
- * Entschlüsselt eine Nachricht mit AES-256-GCM
+ * Entschlüsselt den Nachrichteninhalt mit AES-256-GCM (AEAD)
+ *
+ * @param messageKey - Der Message Key für die Entschlüsselung (32 Bytes)
+ * @param ciphertext - Der verschlüsselte Ciphertext (IV + Daten)
+ * @param encryptedHeader - Der verschlüsselte Header (wird in AD eingebunden)
+ * @param associatedData - Optional: Zusätzliche authentifizierte Daten
+ * @returns Entschlüsselter Plaintext
+ * @throws {Error} Wenn die Authentifizierung fehlschlägt
+ *
+ * @remarks
+ * Die Associated Data (AD) muss identisch zur Verschlüsselung sein: CONCAT(associatedData, encryptedHeader)
  */
 async function decryptMessageContent(
     messageKey: Uint8Array,
@@ -111,7 +115,7 @@ async function decryptMessageContent(
         ['decrypt']
     );
 
-    // Signal Spec: CONCAT(AD, enc_header)
+    // Konstruiere Associated Data: CONCAT(AD, enc_header)
     const ad = associatedData
         ? concatArrays(associatedData, encryptedHeader)
         : encryptedHeader;
@@ -130,44 +134,54 @@ async function decryptMessageContent(
 }
 
 /**
- * Verschlüsselt eine Nachricht mit Header Encryption
- * Signal Spec Section 4.5: RatchetEncryptHE
+ * Verschlüsselt eine Nachricht mit Header Encryption (RatchetEncryptHE)
  *
- * @param state - Aktueller DRStateHE
+ * @param state - Aktueller Double Ratchet State mit Header Encryption
  * @param plaintext - Zu verschlüsselnde Nachricht
- * @param associatedData - Optional: Associated Data
- * @returns Tuple mit [verschlüsselte Nachricht, neuer State]
+ * @param associatedData - Optional: Zusätzliche authentifizierte Daten (AEAD)
+ * @returns Tuple aus [verschlüsselte Nachricht, neuer State]
+ * @throws {Error} Wenn sendingChainKey oder sendingHeaderKey nicht initialisiert ist
+ *
+ * @remarks
+ * Führt folgende Schritte aus:
+ * 1. Leitet Message Key vom Sending Chain Key ab (KDF_CK)
+ * 2. Erstellt Message Header (DH public key, Previous chain length, Message number)
+ * 3. Verschlüsselt Header mit sendingHeaderKey (HENCRYPT)
+ * 4. Verschlüsselt Nachricht mit Message Key (ENCRYPT mit AD)
+ * 5. Inkrementiert Sending Message Number
+ *
+ * @see https://signal.org/docs/specifications/doubleratchet/#encrypting-messages
  */
 export async function ratchetEncryptHE(
     state: DRState,
     plaintext: Uint8Array,
     associatedData?: Uint8Array
 ): Promise<[RatchetMessageHE, DRState]> {
-    // Signal Spec: Validiere dass CKs nicht None ist
+    // Validiere dass CKs nicht None ist
     if (!state.sendingChainKey) {
         throw new Error('Cannot encrypt: sendingChainKey is not initialized. Perform DH ratchet first.');
     }
 
-    // Signal Spec: state.CKs, mk = KDF_CK(state.CKs)
+    // Leite neuen Chain Key und Message Key ab: CKs, mk = KDF_CK(CKs)
     const [newSendingChainKey, messageKey] = await deriveMessageKey(state.sendingChainKey);
 
-    // Signal Spec: header = HEADER(state.DHRs, state.PN, state.Ns)
+    // Erstelle Message Header: HEADER(DHRs, PN, Ns)
     const header: MessageHeader = {
         dh: state.ourEphemeralKeyPair.publicKey,
         pn: state.pn,
         n: state.messageNumbers.sending
     };
 
-    // Signal Spec: enc_header = HENCRYPT(state.HKs, header)
+    // Verschlüssele Header: enc_header = HENCRYPT(HKs, header)
     if (!state.HeaderKeys.sendingHeaderKey) {
         throw new Error('Cannot encrypt header: sendingHeaderKey is not initialized');
     }
     const encryptedHeader = await encryptHeader(state.HeaderKeys.sendingHeaderKey, header);
 
-    // Signal Spec: ENCRYPT(mk, plaintext, CONCAT(AD, enc_header))
+    // Verschlüssele Nachricht: ENCRYPT(mk, plaintext, CONCAT(AD, enc_header))
     const ciphertext = await encryptMessageContent(messageKey, plaintext, encryptedHeader, associatedData);
 
-    // Signal Spec: state.Ns += 1
+    // Inkrementiere Sending Message Number: Ns += 1
     const newState: DRState = {
         ...state,
         sendingChainKey: newSendingChainKey,
@@ -181,46 +195,57 @@ export async function ratchetEncryptHE(
 }
 
 /**
- * Entschlüsselt eine Nachricht mit Header Encryption
- * Signal Spec Section 4.6: RatchetDecryptHE
+ * Entschlüsselt eine Nachricht mit Header Encryption (RatchetDecryptHE)
  *
- * @param state - Aktueller DRStateHE
- * @param message - Verschlüsselte Nachricht
- * @param associatedData - Optional: Associated Data
- * @returns Tuple mit [entschlüsselte Nachricht, neuer State]
+ * @param state - Aktueller Double Ratchet State mit Header Encryption
+ * @param message - Verschlüsselte Nachricht (encryptedHeader + ciphertext)
+ * @param associatedData - Optional: Zusätzliche authentifizierte Daten (AEAD)
+ * @returns Tuple aus [entschlüsselte Nachricht, neuer State]
+ * @throws {Error} Wenn Header nicht entschlüsselt werden kann oder Chain Key null ist
+ *
+ * @remarks
+ * Führt folgende Schritte aus:
+ * 1. Versucht Entschlüsselung mit gespeicherten skipped message keys
+ * 2. Entschlüsselt Header und prüft ob DH Ratchet Step nötig ist
+ * 3. Überspringt fehlende Message Keys falls nötig
+ * 4. Führt DH Ratchet Step aus falls nötig
+ * 5. Leitet Message Key ab und entschlüsselt Nachricht
+ * 6. Inkrementiert Receiving Message Number
+ *
+ * @see https://signal.org/docs/specifications/doubleratchet/#decrypting-messages
  */
 export async function ratchetDecryptHE(
     state: DRState,
     message: RatchetMessageHE,
     associatedData?: Uint8Array
 ): Promise<[Uint8Array, DRState]> {
-    // Signal Spec: plaintext = TrySkippedMessageKeysHE(state, enc_header, ciphertext, AD)
+    // Versuche Entschlüsselung mit skipped message keys: TrySkippedMessageKeysHE
     const skippedResult = await trySkippedMessageKeysHE(state, message, associatedData);
     if (skippedResult) {
         return skippedResult;
     }
 
-    // Signal Spec: header, dh_ratchet = DecryptHeader(state, enc_header)
+    // Entschlüssele Header und prüfe ob DH Ratchet nötig: DecryptHeader
     const {header, dhRatchet} = await decryptHeaderHE(state, message.encryptedHeader);
 
     if (dhRatchet) {
-        // Signal Spec: SkipMessageKeysHE(state, header.pn)
+        // Überspringe Messages bis zur vorherigen Chain: SkipMessageKeysHE(pn)
         state = await skipMessageKeysHE(state, header.pn);
 
-        // Signal Spec: DHRatchetHE(state, header)
+        // Führe DH Ratchet Step aus: DHRatchetHE
         state = await performDHRatchetHE(state, header);
     }
 
-    // Signal Spec: SkipMessageKeysHE(state, header.n)
+    // Überspringe Messages bis zur aktuellen: SkipMessageKeysHE(n)
     state = await skipMessageKeysHE(state, header.n);
 
-    // Signal Spec: state.CKr, mk = KDF_CK(state.CKr)
+    // Leite Message Key ab: CKr, mk = KDF_CK(CKr)
     if (!state.receivingChainKey) {
         throw new Error(`Cannot derive message key: receivingChainKey is null after DH ratchet (header.n=${header.n}, Nr=${state.messageNumbers.receiving})`);
     }
     const [newReceivingChainKey, messageKey] = await deriveMessageKey(state.receivingChainKey);
 
-    // Signal Spec: state.Nr += 1
+    // Inkrementiere Receiving Message Number: Nr = n + 1
     const newState: DRState = {
         ...state,
         receivingChainKey: newReceivingChainKey,
@@ -230,26 +255,36 @@ export async function ratchetDecryptHE(
         }
     };
 
-    // Signal Spec: DECRYPT(mk, ciphertext, CONCAT(AD, enc_header))
+    // Entschlüssele Nachricht: DECRYPT(mk, ciphertext, CONCAT(AD, enc_header))
     const plaintext = await decryptMessageContent(messageKey, message.ciphertext, message.encryptedHeader, associatedData);
 
     return [plaintext, newState];
 }
 
 /**
- * Signal Spec: DecryptHeader - Versuche Header mit HKr oder NHKr zu entschlüsseln
+ * Entschlüsselt einen Message Header und prüft ob DH Ratchet nötig ist (DecryptHeader)
+ *
+ * @param state - Aktueller Double Ratchet State
+ * @param encryptedHeader - Der verschlüsselte Header
+ * @returns Objekt mit entschlüsseltem Header und DH Ratchet Flag
+ * @throws {Error} Wenn Header mit keinem verfügbaren Key entschlüsselt werden kann
+ *
+ * @remarks
+ * Versucht zuerst mit receivingHeaderKey (HKr) zu entschlüsseln.
+ * Falls das fehlschlägt, versucht es mit receivingNextHeaderKey (NHKr).
+ * Wenn NHKr erfolgreich ist, bedeutet das, dass ein DH Ratchet Step nötig ist.
  */
 async function decryptHeaderHE(
     state: DRState,
     encryptedHeader: Uint8Array
 ): Promise<{ header: MessageHeader; dhRatchet: boolean }> {
-    // Signal Spec: header = HDECRYPT(state.HKr, enc_header)
+    // Versuche mit aktuellem receiving header key: HDECRYPT(HKr, enc_header)
     let header = await decryptHeader(state.HeaderKeys.receivingHeaderKey, encryptedHeader);
     if (header) {
         return {header, dhRatchet: false};
     }
 
-    // Signal Spec: header = HDECRYPT(state.NHKr, enc_header)
+    // Versuche mit next receiving header key: HDECRYPT(NHKr, enc_header)
     header = await decryptHeader(state.HeaderKeys.receivingNextHeaderKey, encryptedHeader);
     if (header) {
         return {header, dhRatchet: true};
@@ -259,62 +294,91 @@ async function decryptHeaderHE(
 }
 
 /**
- * Signal Spec Section 4.6: DHRatchetHE
+ * Führt einen DH Ratchet Step mit Header Encryption aus (DHRatchetHE)
+ *
+ * @param state - Aktueller Double Ratchet State
+ * @param header - Der entschlüsselte Message Header mit neuem DH Public Key
+ * @returns Neuer State nach DH Ratchet Step
+ *
+ * @remarks
+ * Führt folgende Schritte aus:
+ * 1. Speichert Previous Chain Length (PN = Ns)
+ * 2. Rotiert Header Keys (HKs = NHKs, HKr = NHKr)
+ * 3. Führt DH mit empfangenem Public Key durch und leitet Receiving Chain Key ab
+ * 4. Generiert neues eigenes DH Key Pair
+ * 5. Führt DH mit neuem Key Pair durch und leitet Sending Chain Key ab
+ * 6. Setzt Message Numbers zurück (Ns = 0, Nr = 0)
+ *
+ * @see https://signal.org/docs/specifications/doubleratchet/#the-diffie-hellman-ratchet
  */
 async function performDHRatchetHE(state: DRState, header: MessageHeader): Promise<DRState> {
     const hkdf = new HKDF('SHA-512');
 
-    // Signal Spec: state.PN = state.Ns
+    // Speichere vorherige Sending Chain Length
     const pn = state.messageNumbers.sending;
 
-    // Signal Spec: state.HKs = state.NHKs; state.HKr = state.NHKr
+    // Rotiere Header Keys: HKs = NHKs, HKr = NHKr
     const sendingHeaderKey = state.HeaderKeys.sendingNextHeaderKey;
     const receivingHeaderKey = state.HeaderKeys.receivingNextHeaderKey;
 
-    // Signal Spec: state.DHRr = header.dh
+    // Speichere empfangenen Public Key
     const theirPublicKey = header.dh;
 
-    // Signal Spec: state.RK, state.CKr, state.NHKr = KDF_RK_HE(state.RK, DH(state.DHRs, state.DHRr))
+    // Leite Receiving Chain Key und Next Receiving Header Key ab
     const dhOutput1 = await deriveSharedSecret(state.ourEphemeralKeyPair.privateKey, theirPublicKey);
     const [rootKey1, receivingChainKey, nextReceivingHeaderKey] = await hkdf.deriveKeysHE(state.rootKey, dhOutput1);
 
-    // Signal Spec: state.DHRs = GENERATE_DH()
+    // Generiere neues eigenes DH Key Pair
     const newKeyPair = await generateKeyPair();
 
-    // Signal Spec: state.RK, state.CKs, state.NHKs = KDF_RK_HE(state.RK, DH(state.DHRs, state.DHRr))
+    // Leite Sending Chain Key und Next Sending Header Key ab
     const dhOutput2 = await deriveSharedSecret(newKeyPair.privateKey, theirPublicKey);
     const [rootKey2, sendingChainKey, nextSendingHeaderKey] = await hkdf.deriveKeysHE(rootKey1, dhOutput2);
 
     return {
-        ...state,
         rootKey: rootKey2,
         sendingChainKey: sendingChainKey,
         receivingChainKey: receivingChainKey,
         ourEphemeralKeyPair: newKeyPair,
         theirEphemeralPublicKey: theirPublicKey,
-        pn: pn,
+
         messageNumbers: {
             sending: 0,
             receiving: 0
         },
-        sendingHeaderKey: sendingHeaderKey,
-        receivingHeaderKey: receivingHeaderKey,
-        nextSendingHeaderKey: nextSendingHeaderKey,
-        nextReceivingHeaderKey: nextReceivingHeaderKey
+        pn: pn,
+        skippedMessageKeys: state.skippedMessageKeys,
+        HeaderKeys: {
+            sendingHeaderKey: sendingHeaderKey,
+            sendingNextHeaderKey: nextSendingHeaderKey,
+            receivingHeaderKey: receivingHeaderKey,
+            receivingNextHeaderKey: nextReceivingHeaderKey
+        }
     };
 }
 
 /**
- * Signal Spec: TrySkippedMessageKeysHE
- * Versucht, eine Nachricht mit gespeicherten skipped message keys zu entschlüsseln
+ * Versucht eine Nachricht mit gespeicherten Skipped Message Keys zu entschlüsseln (TrySkippedMessageKeysHE)
+ *
+ * @param state - Aktueller Double Ratchet State
+ * @param message - Verschlüsselte Nachricht
+ * @param associatedData - Optional: Zusätzliche authentifizierte Daten
+ * @returns Tuple aus [entschlüsselte Nachricht, neuer State] oder null wenn kein passender Key gefunden
+ *
+ * @remarks
+ * Iteriert über alle gespeicherten skipped message keys und versucht:
+ * 1. Header mit verfügbaren Header Keys zu entschlüsseln
+ * 2. Wenn erfolgreich: Konstruiert Key-ID aus Public Key und Message Number
+ * 3. Prüft ob ein gespeicherter Key mit dieser ID existiert
+ * 4. Versucht Nachricht zu entschlüsseln
+ * 5. Bei Erfolg: Löscht verwendeten Key aus Map
  */
 async function trySkippedMessageKeysHE(
     state: DRState,
     message: RatchetMessageHE,
     associatedData?: Uint8Array
 ): Promise<[Uint8Array, DRState] | null> {
-    // Signal Spec: Versuche Header mit allen gespeicherten Header Keys zu entschlüsseln
-    // Für jeden skipped message key, versuche den Header zu entschlüsseln
+    // Versuche Header mit allen gespeicherten Header Keys zu entschlüsseln
     for (const [keyId, skippedKey] of state.skippedMessageKeys.entries()) {
         // Der keyId Format ist: "base64(publicKey):n"
         // Wir müssen den Header mit allen möglichen Header Keys entschlüsseln
@@ -322,18 +386,16 @@ async function trySkippedMessageKeysHE(
         // Versuche mit aktuellem Header Key
         let header = await decryptHeader(state.HeaderKeys.receivingHeaderKey, message.encryptedHeader);
 
-        // Versuche mit Next Header Key falls nicht erfolgreich
-        if (!header) {
-            header = await decryptHeader(state.HeaderKeys.receivingNextHeaderKey, message.encryptedHeader);
-        }
+        // Versuche mit Next Header Key falls nicht erfolgreich (Nullish Coalescing)
+        header ??= await decryptHeader(state.HeaderKeys.receivingNextHeaderKey, message.encryptedHeader);
 
         if (header) {
-            // Erstelle KeyId für diese Nachricht
+            // Erstelle KeyId für diese Nachricht (DH Public Key + Message Number)
             const messageKeyId = `${btoa(String.fromCodePoint(...header.dh))}:${header.n}`;
 
             // Prüfe ob wir einen gespeicherten Key für diese Nachricht haben
             if (messageKeyId === keyId) {
-                // Signal Spec: Entschlüssele mit dem skipped message key
+                // Entschlüssele mit dem skipped message key
                 try {
                     const plaintext = await decryptMessageContent(
                         skippedKey.messageKey,
@@ -342,7 +404,7 @@ async function trySkippedMessageKeysHE(
                         associatedData
                     );
 
-                    // Signal Spec: Lösche den verwendeten skipped message key
+                    // Lösche den verwendeten skipped message key
                     const newSkippedKeys = new Map(state.skippedMessageKeys);
                     newSkippedKeys.delete(keyId);
 
@@ -363,15 +425,27 @@ async function trySkippedMessageKeysHE(
 }
 
 /**
- * Signal Spec: SkipMessageKeysHE
+ * Überspringt fehlende Message Keys und speichert sie für spätere Out-of-Order Entschlüsselung (SkipMessageKeysHE)
+ *
+ * @param state - Aktueller Double Ratchet State
+ * @param until - Message Number bis zu der übersprungen werden soll (exklusiv)
+ * @returns Neuer State mit gespeicherten skipped keys und aktualisierter Receiving Number
+ * @throws {Error} Wenn zu viele Messages übersprungen werden müssen (> MAX_SKIP)
+ *
+ * @remarks
+ * Diese Funktion wird verwendet wenn eine Nachricht mit höherer Message Number empfangen wird.
+ * Alle Message Keys dazwischen werden generiert und gespeichert, falls diese Nachrichten
+ * später noch ankommen (Out-of-Order Delivery).
+ *
+ * MAX_SKIP = 1000 verhindert DoS-Attacken durch künstlich hohe Message Numbers.
  */
 async function skipMessageKeysHE(state: DRState, until: number): Promise<DRState> {
-    // Signal Spec: If nothing to skip, return
+    // Falls nichts zu überspringen ist, direkt zurückgeben
     if (state.messageNumbers.receiving >= until) {
         return state;
     }
 
-    // Signal Spec: "if state.CKr != None" - nur skippen wenn Chain Key existiert
+    // Nur skippen wenn Chain Key existiert (CKr != None)
     if (!state.receivingChainKey) {
         return state;
     }
@@ -388,7 +462,7 @@ async function skipMessageKeysHE(state: DRState, until: number): Promise<DRState
     while (state.messageNumbers.receiving < until) {
         const [newChainKey, messageKey] = await deriveMessageKey(currentChainKey);
 
-        // Speichere Message Key (vereinfachte Version)
+        // Speichere Message Key mit ID: "base64(publicKey):messageNumber"
         const keyId = `${btoa(String.fromCodePoint(...state.theirEphemeralPublicKey))}:${state.messageNumbers.receiving}`;
         newSkippedKeys.set(keyId, {
             messageKey: messageKey,
@@ -412,6 +486,13 @@ async function skipMessageKeysHE(state: DRState, until: number): Promise<DRState
     };
 }
 
+/**
+ * Konkateniert zwei Uint8Arrays zu einem neuen Array
+ *
+ * @param a - Erstes Array
+ * @param b - Zweites Array
+ * @returns Neues Array mit Inhalt von a gefolgt von b
+ */
 function concatArrays(a: Uint8Array, b: Uint8Array): Uint8Array {
     const result = new Uint8Array(a.length + b.length);
     result.set(a);
