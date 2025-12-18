@@ -7,7 +7,7 @@
 import {DRState, MessageHeader, RatchetMessageHE} from './DR_Interfaces';
 import {encryptHeader, decryptHeader} from './HeaderEncryption';
 import {HKDF} from './HKDF';
-import {deriveSharedSecret, generateKeyPair} from './CryptoUtils';
+import {deriveSharedSecret, generateKeyPair, aesGcmEncrypt, aesGcmDecrypt} from './CryptoUtils';
 
 
 
@@ -54,35 +54,15 @@ async function encryptMessageContent(
     encryptedHeader: Uint8Array,
     associatedData?: Uint8Array
 ): Promise<Uint8Array> {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-
-    const key = await crypto.subtle.importKey(
-        'raw',
-        messageKey as BufferSource,
-        {name: 'AES-GCM', length: 256},
-        false,
-        ['encrypt']
-    );
-
     // Konstruiere Associated Data: CONCAT(AD, enc_header)
     const ad = associatedData
         ? concatArrays(associatedData, encryptedHeader)
         : encryptedHeader;
 
-    const ciphertext = await crypto.subtle.encrypt(
-        {
-            name: 'AES-GCM',
-            iv: iv as BufferSource,
-            additionalData: ad as BufferSource
-        },
-        key,
-        plaintext as BufferSource
-    );
+    // Verschlüssele mit AES-256-GCM
+    const ciphertext = aesGcmEncrypt(messageKey, plaintext, ad);
 
-    const result = new Uint8Array(iv.length + ciphertext.byteLength);
-    result.set(iv);
-    result.set(new Uint8Array(ciphertext), iv.length);
-    return result;
+    return ciphertext;
 }
 
 /**
@@ -104,33 +84,15 @@ async function decryptMessageContent(
     encryptedHeader: Uint8Array,
     associatedData?: Uint8Array
 ): Promise<Uint8Array> {
-    const iv = ciphertext.slice(0, 12);
-    const actualCiphertext = ciphertext.slice(12);
-
-    const key = await crypto.subtle.importKey(
-        'raw',
-        messageKey as BufferSource,
-        {name: 'AES-GCM', length: 256},
-        false,
-        ['decrypt']
-    );
-
     // Konstruiere Associated Data: CONCAT(AD, enc_header)
     const ad = associatedData
         ? concatArrays(associatedData, encryptedHeader)
         : encryptedHeader;
 
-    const plaintext = await crypto.subtle.decrypt(
-        {
-            name: 'AES-GCM',
-            iv: iv as BufferSource,
-            additionalData: ad as BufferSource
-        },
-        key,
-        actualCiphertext as BufferSource
-    );
+    // Entschlüssele mit AES-256-GCM
+    const plaintext = aesGcmDecrypt(messageKey, ciphertext, ad);
 
-    return new Uint8Array(plaintext);
+    return plaintext;
 }
 
 /**

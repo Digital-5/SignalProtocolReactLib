@@ -5,6 +5,7 @@
  */
 
 import {MessageHeader} from './DR_Interfaces';
+import {aesGcmEncrypt, aesGcmDecrypt} from './CryptoUtils';
 
 /**
  * Verschlüsselt einen Message Header mit AES-256-GCM
@@ -21,33 +22,12 @@ export async function encryptHeader(
     // Serialisiere Header zu Bytes
     const headerBytes = serializeHeaderForEncryption(header);
 
-    // Generiere einen zufälligen IV (12 Bytes für GCM)
+    // Verschlüssele Header mit AES-256-GCM
     // Signal Spec: "AEAD nonce must either be stateful non-repeating value,
     // or must be random non-repeating value chosen with at least 128 bits of entropy"
-    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encryptedHeader = aesGcmEncrypt(headerKey, headerBytes);
 
-    // Importiere Header Key
-    const key = await crypto.subtle.importKey(
-        'raw',
-        headerKey as BufferSource,
-        {name: 'AES-GCM', length: 256},
-        false,
-        ['encrypt']
-    );
-
-    // Verschlüssele Header mit AES-256-GCM
-    const ciphertext = await crypto.subtle.encrypt(
-        {name: 'AES-GCM', iv: iv as BufferSource},
-        key,
-        headerBytes as BufferSource
-    );
-
-    // Kombiniere IV + Ciphertext
-    const result = new Uint8Array(iv.length + ciphertext.byteLength);
-    result.set(iv);
-    result.set(new Uint8Array(ciphertext), iv.length);
-
-    return result;
+    return encryptedHeader;
 }
 
 /**
@@ -68,28 +48,11 @@ export async function decryptHeader(
     }
 
     try {
-        // Extrahiere IV und Ciphertext
-        const iv = encryptedHeader.slice(0, 12);
-        const ciphertext = encryptedHeader.slice(12);
-
-        // Importiere Header Key
-        const key = await crypto.subtle.importKey(
-            'raw',
-            headerKey as BufferSource,
-            {name: 'AES-GCM', length: 256},
-            false,
-            ['decrypt']
-        );
-
-        // Entschlüssele Header
-        const plaintext = await crypto.subtle.decrypt(
-            {name: 'AES-GCM', iv: iv as BufferSource},
-            key,
-            ciphertext as BufferSource
-        );
+        // Entschlüssele Header mit AES-256-GCM
+        const plaintext = aesGcmDecrypt(headerKey, encryptedHeader);
 
         // Deserialisiere Header
-        return deserializeHeaderFromEncryption(new Uint8Array(plaintext));
+        return deserializeHeaderFromEncryption(plaintext);
     } catch {
         // Signal Spec: "If authentication fails ... returns None"
         return null;

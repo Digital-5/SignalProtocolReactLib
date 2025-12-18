@@ -10,6 +10,7 @@ import {generateX25519KeyPair, deriveSharedSecret} from "../algorithms/X25519";
 import {StringKeyPair} from "../objects/StringKeyPair";
 import {generateKemKeypair, encapsulate, decapsulate} from "../algorithms/Kyber";
 import {HKDF_Func} from "../algorithms/HKDF";
+import {getRandomBytes} from "../../double-ratchet/CryptoUtils";
 
 export function generateX25519Keys(): StringKeyPair {
     const keyPair = generateX25519KeyPair()
@@ -48,7 +49,7 @@ export async function decapsulateKyber(cipherText: string, privateKey: string): 
 export function signKey(privateKey: string, toSign: string) {
     const dataBytes = HexStringToUInt8Array(toSign);
     const privateKeyBytes = HexStringToUInt8Array(privateKey);
-    const randomness = crypto.getRandomValues(new Uint8Array(64));
+    const randomness = getRandomBytes(64);
     const signature = xeddsa_sign(privateKeyBytes, dataBytes, randomness);
     const signatureHex = UInt8ArrayToHexString(signature);
     return signatureHex;

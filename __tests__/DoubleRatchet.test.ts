@@ -4,7 +4,7 @@
  */
 import { DR_Init_HE } from '../src/double-ratchet/DR_Init_HE';
 import { ratchetEncryptHE, ratchetDecryptHE } from '../src/double-ratchet/DR_Ratchet_HE';
-import { generateKeyPair, type KeyPair } from '../src/double-ratchet/CryptoUtils';
+import { generateKeyPair, getRandomBytes, type KeyPair } from '../src/double-ratchet/CryptoUtils';
 
 /**
  * Helper: Generiert initiale Header Keys für HE
@@ -28,7 +28,7 @@ describe('Double Ratchet mit Header Encryption', () => {
     });
 
     beforeEach(() => {
-        rootKey = crypto.getRandomValues(new Uint8Array(32));
+        rootKey = getRandomBytes(32);
     });
 
     describe('DR_Init_HE', () => {
@@ -67,7 +67,7 @@ describe('Double Ratchet mit Header Encryption', () => {
                 isInitiator: true
             });
 
-            const differentRootKey = crypto.getRandomValues(new Uint8Array(32));
+            const differentRootKey = getRandomBytes(32);
             const headerKeys2 = generateHeaderKeys();
             const state2 = await DR_Init_HE({
                 rootKey: differentRootKey,
@@ -86,8 +86,8 @@ describe('Double Ratchet mit Header Encryption', () => {
     describe('ratchetEncryptHE & ratchetDecryptHE', () => {
         it('sollte eine Nachricht mit Header Encryption verschlüsseln und entschlüsseln können', async () => {
             // Gemeinsame Header Keys für beide Parteien
-            const sharedHKA = crypto.getRandomValues(new Uint8Array(32));
-            const sharedNHKB = crypto.getRandomValues(new Uint8Array(32));
+            const sharedHKA = getRandomBytes(32);
+            const sharedNHKB = getRandomBytes(32);
 
             // Alice initialisiert (Initiator)
             const aliceState = await DR_Init_HE({

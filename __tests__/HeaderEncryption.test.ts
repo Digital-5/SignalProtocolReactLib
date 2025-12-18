@@ -4,9 +4,8 @@
  */
 import { DR_Init_HE } from '../src/double-ratchet/DR_Init_HE';
 import { ratchetEncryptHE, ratchetDecryptHE } from '../src/double-ratchet/DR_Ratchet_HE';
-import { DRState } from '../src/double-ratchet/DR_Interfaces';
+import { DRState, MessageHeader } from '../src/double-ratchet/DR_Interfaces';
 import { encryptHeader, decryptHeader } from '../src/double-ratchet/HeaderEncryption';
-import { MessageHeader } from '../src/double-ratchet/DR_Ratchet_HE';
 import { generateKeyPair } from '../src/double-ratchet/CryptoUtils';
 
 describe('Header Encryption (Section 4)', () => {

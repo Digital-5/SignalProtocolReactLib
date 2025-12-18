@@ -54,10 +54,11 @@ interface RatchetMessageHE {
 
 ```typescript
 import { DR_InitHE, DRStateHE } from 'signal-protocol-react-lib';
+import { getRandomBytes } from 'signal-protocol-react-lib/double-ratchet';
 
 // Shared Keys (von PQXDH oder anderem Key Agreement)
-const sharedSendingHeaderKey = crypto.getRandomValues(new Uint8Array(32));
-const sharedNextReceivingHeaderKey = crypto.getRandomValues(new Uint8Array(32));
+const sharedSendingHeaderKey = getRandomBytes(32);
+const sharedNextReceivingHeaderKey = getRandomBytes(32);
 
 // Alice (Initiator)
 const aliceState: DRStateHE = await DR_InitHE({

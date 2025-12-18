@@ -14,8 +14,6 @@ describe('PQXDH_Tests', () => {
             const stringKeys = generateX25519Keys();
             const message = "F6A1FA6512"; // Random message in hex
             const signature = signKey(stringKeys.privateKey, message);
-            console.log(stringKeys.publicKey)
-            console.log(stringKeys.privateKey)
             const isValid = verifySignature(stringKeys.publicKey, message, signature);
             expect(isValid).toBe(true);
         });
