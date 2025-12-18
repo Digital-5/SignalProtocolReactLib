@@ -22,7 +22,7 @@ export function createDRState(
         rootKey: stringToUint8Array(rootKey),
         sendingChainKey: null,
         receivingChainKey: null,
-        ourEphemeralKeyPair: convertStringsToUint8Array(ourEphemeralKeyPair), //error kann ignoriert werden da wir sicher sind das es konvertierbar ist
+        ourEphemeralKeyPair: convertStringsToUint8Array(ourEphemeralKeyPair) as unknown as { publicKey: Uint8Array; privateKey: Uint8Array },
         theirEphemeralPublicKey: stringToUint8Array(theirEphemeralPublicKey),
         messageNumbers,
         pn,
