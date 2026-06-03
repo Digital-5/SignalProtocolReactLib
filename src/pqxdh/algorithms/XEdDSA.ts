@@ -29,10 +29,9 @@ https://signal.org/docs/specifications/xeddsa/xeddsa.pdf
 export function convert_mont(u: Uint8Array): Uint8Array {
     let uBigint = Uint8ArrayToBigintLE(u)
 
-    // 1. u_masked = u mod p
-    // For some reason the signal specs say "mod 2^p" (Page 4), but this wouldn't work
-    // According and the curve definitions and my tests, it should be mod p
-    let u_masked = mod(uBigint, BigInt(CURVE25519_PARAMS.p));
+    // 1. u_masked = u mod 2^|p|
+    // |p| = ceil(log2(p)) = 255
+    let u_masked = mod(uBigint, BigInt(2) ** BigInt(255));
 
     // 2. P.y = u_to_y(u_masked)
     // Birational map from Montgomery u to Edwards y according to RFC 7748, Section 4.1:
