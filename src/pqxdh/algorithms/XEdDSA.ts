@@ -164,7 +164,7 @@ export function xeddsa_verify(u:Uint8Array, M:Uint8Array, Signature:Uint8Array) 
     const R = Uint8ArrayToBigintLE(R_encoded_copy);
 
     // 1. Check if u and Signature are of correct length
-    if (u_converted >= CURVE25519_PARAMS.p || R >= CURVE25519_PARAMS.p || s >= CURVE25519_PARAMS.q) {
+    if (u_converted >= CURVE25519_PARAMS.p || R >= 2**CURVE25519_PARAMS.pBits || s >= 2**CURVE25519_PARAMS.qBits) {
         return false;
     }
 
