@@ -22,6 +22,23 @@ https://signal.org/docs/specifications/xeddsa/xeddsa.pdf
 // Includes fancy JSDoc comments :)
 
 /**
+ * Constant-time comparison of two hex strings.
+ * Prevents timing side-channel attacks by always comparing every character
+ * regardless of where the first difference occurs.
+ */
+function constantTimeEqual(a: string, b: string): boolean {
+    if (a.length !== b.length) {
+        return false;
+    }
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+        // eslint-disable-next-line no-bitwise
+        diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return diff === 0;
+}
+
+/**
  * Convert a Montgomery u-coordinate to an Edwards point encoding (y-coordinate with sign bit = 0)
  * @param u - Montgomery u-coordinate
  * @returns Edwards point encoding
@@ -51,53 +68,51 @@ export function convert_mont(u: Uint8Array): Uint8Array {
 }
 
 /**
- * Calculate XEdDSA key pair from X25519 private key
- * @param k - Private X25519 key
- * @returns Object containing publicKey and privateKey as bigint
+ * Calculate XEdDSA key pair from X25519 private key.
+ * Per the XEdDSA spec (https://signal.org/docs/specifications/xeddsa/xeddsa.pdf):
+ * 1. Take the clamped X25519 private key as-is (bit 254 set, bits 0-2 cleared)
+ * 2. Compute E = scalar * B on the Edwards curve
+ * 3. If E's sign bit is 1, negate the scalar to produce sign bit 0
+ * 4. Return the signing scalar and public key (y-coordinate with sign 0)
+ *
+ * @param k - Clamped X25519 private key (32 bytes)
+ * @returns Object containing publicKey (y-coordinate) and privateKey (signing scalar)
  */
 export function calculate_key_pair(k: Uint8Array): {
     publicKey: bigint;
     privateKey: bigint;
 } {
     const kBigint = Uint8ArrayToBigintLE(k);
-    // The curve order 'q' for Curve25519
     const CURVE_ORDER_Q = CURVE25519_PARAMS.q;
 
-    // Normalize k to be within valid range [1, q-1]
-    // This is necessary because X25519 keys can be larger than Ed25519 order
-    let normalizedK = mod(kBigint, CURVE_ORDER_Q);
-
-    // 1. E = kB
-    // Perform scalar multiplication of the private key 'k' with the base point 'B'.
-    const E = getBasePoint().multiply(normalizedK);
+    // Per XEdDSA spec: use the full clamped scalar for the Edwards computation.
+    // Since the Ed25519 base point B has order q, k*B = (k mod q)*B mathematically.
+    // We reduce here only because the library requires scalar in [1, q].
+    // The sign determination and scalar derivation use the ORIGINAL key below.
+    const scalarForMul = mod(kBigint, CURVE_ORDER_Q);
+    const E = getBasePoint().multiply(scalarForMul);
 
     // Determine E.s (the sign bit of E's x-coordinate).
-    // For Ed25519, the sign bit is determined from the x-coordinate when encoding.
-    // When a point is encoded: y-coordinate (255 bits) + sign bit of x (1 bit).
+    // In Ed25519 encoding: y-coordinate (255 bits) + sign bit of x (1 bit).
     // eslint-disable-next-line no-bitwise
     const Es = Number(E.x & 1n); // Sign bit is the LSB of x-coordinate
 
     let a: bigint;
     let A: bigint;
 
-    // 2. If E.s = 1: a = -k (mod q), negate the point
+    // Per XEdDSA spec: if sign bit is 1, negate the scalar so A has sign 0.
+    // The signing scalar is derived from the ORIGINAL clamped key (not pre-reduced).
     if (Es === 1) {
-        a = mod(-normalizedK, CURVE_ORDER_Q);
-        // A needs to have its sign bit A.s = 0.
-        // Negate the point to flip the sign bit.
+        // a = -k (mod q): negate the original key's scalar
+        a = mod(-kBigint, CURVE_ORDER_Q);
         const negE = E.negate();
         A = negE.y;
     } else {
-        // 3. Else: a = k (mod q)
-        a = normalizedK;
-        // If E already has s=0, then A is E itself.
+        // a = k (mod q): reduce the original key for signing arithmetic
+        a = mod(kBigint, CURVE_ORDER_Q);
         A = E.y;
     }
 
-    // The document specifies A.y = E.y and A.s = 0.
-    // Instead of changing the sign bit manually, we can negate the point if needed.
-
-    // Return the derived public key 'A' and the adjusted private key 'a'.
     return { publicKey: A, privateKey: a };
 }
 
@@ -201,6 +216,10 @@ export function xeddsa_verify(u:Uint8Array, M:Uint8Array, Signature:Uint8Array) 
     const hA = A_point.multiply(h);
     const R_check = sB.add(hA.negate());
 
-    // Compare R_check with R_point
-    return R_check.equals(R_point);
+    // Constant-time comparison of encoded points to prevent timing side-channels.
+    // Encode both points to their canonical 32-byte representations and compare.
+    const R_check_hex = R_check.toHex();
+    const R_point_hex = R_point.toHex();
+
+    return constantTimeEqual(R_check_hex, R_point_hex);
 }

@@ -83,17 +83,6 @@ async function KDF_RK_HE(rk: Uint8Array, dhOutput: Uint8Array): Promise<[Uint8Ar
     // Verwende HKDF mit SHA-512 zur Ableitung von RK, CK und NHK
     // Signal Spec: KDF keyed by RK with DH output as input
     const hkdf = new HKDF('SHA-512');
-    const derived = await hkdf.deriveKeys(
-        rk, // salt = root key
-        dhOutput, // input key material = DH output
-        96 // 3 x 32 bytes = RK (32) + CK (32) + NHK (32) für AES-256-GCM
-    );
-
-    // Teile in 3 x 32 Bytes auf
-    const RK = derived.slice(0, 32);
-    const CK = derived.slice(32, 64);
-    const NHK = derived.slice(64, 96); // 32 Bytes für AES-256-GCM Header Encryption
-
-    return [RK, CK, NHK];
+    return hkdf.deriveKeysHE(rk, dhOutput);
 }
 

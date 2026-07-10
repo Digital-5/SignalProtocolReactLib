@@ -10,6 +10,8 @@
  * Signal Spec: MKSKIPPED dictionary
  */
 export interface SkippedMessageKey {
+    /** Der Header Key, der aktiv war als dieser Key gespeichert wurde */
+    headerKey: Uint8Array;
     /** Der Message Key für die Entschlüsselung */
     messageKey: Uint8Array;
     /** Zeitstempel, wann dieser Key erstellt wurde (für Cleanup) in ms (Date.now) */

@@ -55,12 +55,40 @@ export function signKey(privateKey: string, toSign: string) {
     return signatureHex;
 }
 
+/**
+ * Sign raw bytes directly (e.g., UTF-8 encoded JWT "header.payload" strings).
+ * Unlike signKey which interprets toSign as hex, this signs the exact bytes provided.
+ * @param privateKeyHex - X25519 private key as hex string
+ * @param data - Raw bytes to sign
+ * @returns Signature as hex string
+ */
+export function signBytes(privateKeyHex: string, data: Uint8Array): string {
+    const privateKeyBytes = HexStringToUInt8Array(privateKeyHex);
+    const randomness = getRandomBytes(64);
+    const signature = xeddsa_sign(privateKeyBytes, data, randomness);
+    return UInt8ArrayToHexString(signature);
+}
+
 export function verifySignature(publicKey: string, data: string, signature: string) {
     const publicKeyBytes = HexStringToUInt8Array(publicKey);
     const dataBytes = HexStringToUInt8Array(data);
     const signatureBytes = HexStringToUInt8Array(signature);
     const isValid = xeddsa_verify(publicKeyBytes, dataBytes, signatureBytes);
     return isValid;
+}
+
+/**
+ * Verify a signature against raw bytes (e.g., UTF-8 encoded JWT "header.payload" strings).
+ * Unlike verifySignature which interprets data as hex, this verifies against exact bytes.
+ * @param publicKeyHex - X25519 public key as hex string
+ * @param data - Raw bytes that were signed
+ * @param signatureHex - Signature as hex string
+ * @returns true if the signature is valid
+ */
+export function verifyBytes(publicKeyHex: string, data: Uint8Array, signatureHex: string): boolean {
+    const publicKeyBytes = HexStringToUInt8Array(publicKeyHex);
+    const signatureBytes = HexStringToUInt8Array(signatureHex);
+    return xeddsa_verify(publicKeyBytes, data, signatureBytes);
 }
 
 export async function stringDiffieHellman(privateKey: string, publicKey: string): Promise<string> {
