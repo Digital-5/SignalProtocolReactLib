@@ -48,6 +48,13 @@ export function toJson(state: DRState): string {
 
 //Hilfsfunktion um string in Uint8Array zu konvertieren
 export function stringToUint8Array(str: string): Uint8Array {
+    if (str.length > 0 && str.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(str)) {
+        const bytes = new Uint8Array(str.length / 2);
+        for (let i = 0; i < str.length; i += 2) {
+            bytes[i / 2] = parseInt(str.substring(i, i + 2), 16);
+        }
+        return bytes;
+    }
     const encoder = new TextEncoder();
     return encoder.encode(str);
 }
@@ -103,14 +110,19 @@ export function convertStringsToUint8Array<T>(obj: T): T {
     }
 }
 
-export function cleanUnusedMessageKeys(state: DRState) {
+export function cleanUnusedMessageKeys(state: DRState): DRState {
     const MAX_AGE = 1000 * 60 * 60 * 24 * 7 * 4; //ein monat in ms
     const jetztZeit = Date.now();
+    const newSkippedKeys = new Map<string, SkippedMessageKey>();
     for (const [keyId, skippedKey] of state.skippedMessageKeys.entries()) {
-        if (jetztZeit - skippedKey.timestamp> MAX_AGE) {
-            state.skippedMessageKeys.delete(keyId);
+        if (jetztZeit - skippedKey.timestamp <= MAX_AGE) {
+            newSkippedKeys.set(keyId, skippedKey);
         }
     }
+    return {
+        ...state,
+        skippedMessageKeys: newSkippedKeys
+    };
 }
 
 //für ratchet encryption und decryption siehe dr_ratchet_he

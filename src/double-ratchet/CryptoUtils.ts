@@ -55,7 +55,17 @@ export async function deriveSharedSecret(
     // X25519(privateKey, publicKey) - Berechne Shared Secret
     const sharedSecret = x25519.getSharedSecret(privateKeyBytes, publicKeyBytes);
 
-    return new Uint8Array(sharedSecret);
+    // Prüfe auf Low-Order-Point-Attacke: Ergebnis darf nicht all-zeros sein
+    const result = new Uint8Array(sharedSecret);
+    let isZero = 0;
+    for (let i = 0; i < result.length; i++) {
+        isZero |= result[i];
+    }
+    if (isZero === 0) {
+        throw new Error('X25519 shared secret is zero (low-order point attack)');
+    }
+
+    return result;
 }
 
 /**

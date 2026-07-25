@@ -64,6 +64,14 @@ export async function decryptHeader(
  * Format: dh_length(2) + dh + pn(4) + n(4)
  */
 function serializeHeaderForEncryption(header: MessageHeader): Uint8Array {
+    const MAX_UINT32 = 0xFFFFFFFF;
+    if (header.n >= MAX_UINT32) {
+        throw new Error(`Message counter n overflow: ${header.n} >= 2^32`);
+    }
+    if (header.pn >= MAX_UINT32) {
+        throw new Error(`Previous chain counter pn overflow: ${header.pn} >= 2^32`);
+    }
+
     const dhLength = header.dh.length;
     const result = new Uint8Array(2 + dhLength + 4 + 4);
     const view = new DataView(result.buffer);
